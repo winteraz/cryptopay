@@ -3,71 +3,18 @@ package cryptopay
 import (
 	"encoding/hex"
 	"errors"
-	"flag"
 
-	"github.com/bartekn/go-bip39"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcutil/hdkeychain"
-	"github.com/tyler-smith/go-bip32"
 
 	"github.com/alfg/blockchain"
 
 	log "github.com/golang/glog"
 )
-
-func main() {
-	flag.Parse()
-	defer log.Flush()
-	// Generate a seed to determine all keys from.
-	// This should be persisted, backed up, and secured
-	entropy, err := bip39.NewEntropy(256)
-	if err != nil {
-		log.Error(err)
-		return
-	}
-	mnemonic, err := bip39.NewMnemonic(entropy)
-	if err != nil {
-		log.Error(err)
-		return
-	}
-	// our mnemonic
-	mnemonic = "tape sword sausage potato scare false grow small barrel river auto goat enlist range inhale impose select blast assist clog hint easy spoon title"
-	// Generate a Bip32 HD wallet for the mnemonic and a user supplied password
-	seed := bip39.NewSeed(mnemonic, "somepassword")
-	// Create master private key from seed
-	masterKey, err := bip32.NewMasterKey(seed)
-	if err != nil {
-		log.Error(err)
-		return
-	}
-	log.Errorf("mnemonic %s\n master %s", mnemonic, masterKey.B58Serialize())
-	var children = map[string]string{}
-	//	defaultNet := &chaincfg.MainNetParams
-	var addra []string
-	for i := uint32(0); i <= 10; i++ {
-		k, err := masterKey.NewChildKey(i)
-		if err != nil {
-			log.Error(err)
-			continue
-		}
-		children[k.B58Serialize()] = k.PublicKey().B58Serialize()
-		//	pubByte, err := k.PublicKey().Serialize()
-
-		//	addra = append(addra, addr.EncodeAddress())
-		addr, err := BTCAddr(k.PublicKey().B58Serialize())
-		if err != nil {
-			log.Error(err)
-			return
-		}
-		addra = append(addra, addr)
-	}
-	log.Errorf("address is %q", addra)
-	return
-}
 
 
 
@@ -76,9 +23,12 @@ var ErrZeroBalance = errors.New("Balance is zero")
 //  https://bitcoin.stackexchange.com/a/7857/69359
 //  To send bitcoins you need:
 //  Private key(s) for the address(es) being spent
-//  Transaction hash + index for each transaction previously received to those addresses whose funds will be used for spending in this transaction
-//  Bitcoin address(es) to send to, including change address if there will be change.
-// receives from private key of the address
+//  Transaction hash + index for each transaction previously received to those addresses
+//  whose funds will be used for spending in this transaction
+//  Bitcoin address(es) to send to
+// receives from private key(base58) of the address where the funds are 
+// and the bitcoin address where the funds will be sent 
+// It uses blockchain.info API to get the public address history so that it can create a transaction.
 func Transfer(from, to string) (*wire.MsgTx, int64, error) {
 	privKey, err := hdkeychain.NewKeyFromString(from)
 	if err != nil {
@@ -187,13 +137,11 @@ func Unspent(address string) (*wire.MsgTx, int64, error) {
 			tx.AddTxOut(txout)
 		}
 		for _, in := range bktx.Inputs {
-			prevIn, script, err := chainInToOutpoint(in)
+			txIn, err := chainInputToTx(in)
 			if err != nil {
 				log.Error(err)
 				return nil, 0, err
 			}
-			var  witness [][]byte // where to get this?
-			txIn := wire.NewTxIn(prevIn, script, witness)
 			tx.AddTxIn(txIn)
 		}
 	}
@@ -201,17 +149,21 @@ func Unspent(address string) (*wire.MsgTx, int64, error) {
 }
 
 
-func chainInToOutpoint(tx *blockchain.Inputs) (*wire.OutPoint, []byte, error) {
-	hash := chainhash.Hash{}
-	// WHERE to get this ??? Inputs doesn't have transaction hash 
-	// only the transaction(parent) itself hash a hash.
-	var inputHash string 
-	if err := chainhash.Decode(&hash, inputHash); err != nil {
-		return nil, nil, err
-	}
+func chainInputToTx(tx *blockchain.Inputs) (*wire.TxIn, error) {
 	script, err := hex.DecodeString(tx.Script)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return wire.NewOutPoint(&hash, uint32(tx.PrevOut.TxIndex)), script, nil
+	// WHERE to get this ??? Inputs doesn't have transaction hash 
+	// only the transaction(parent) itself hash a hash.
+	// currently we use dummy/empty value
+	var inputHash string 
+	hash := chainhash.Hash{}
+	if err := chainhash.Decode(&hash, inputHash); err != nil {
+		return nil,  err
+	}
+	var  witness [][]byte // how to decode this??? this is provided as a string by blockchain API
+	outPoint := wire.NewOutPoint(&hash, uint32(tx.PrevOut.TxIndex))
+	txIn := wire.NewTxIn(outPoint, script, witness)
+	return txIn,  nil
 }
