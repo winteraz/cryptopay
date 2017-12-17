@@ -1,7 +1,6 @@
 package cryptopay
 
 import (
-
 	"github.com/bartekn/go-bip39"
 	"github.com/btcsuite/btcd/chaincfg"
 
@@ -9,8 +8,6 @@ import (
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcutil/hdkeychain"
 	"github.com/tyler-smith/go-bip32"
-
-
 
 	log "github.com/golang/glog"
 )
@@ -50,9 +47,8 @@ func BTCAddr(pubKeyEncoded string) (string, error) {
 
 }
 
-
 // returns a new masterkey along with its base58encoded form
-func NewMaster(passw string)(mnemonic, b58 string, err error){
+func NewMaster(passw string) (mnemonic, b58 string, err error) {
 	entropy, err := bip39.NewEntropy(256)
 	if err != nil {
 		log.Error(err)
@@ -74,15 +70,15 @@ func NewMaster(passw string)(mnemonic, b58 string, err error){
 	return mnemonic, masterKey.B58Serialize(), nil
 }
 
-type Key struct{
-	Private, Public,  BTCPublic string
+type Key struct {
+	Private, Public, BTCPublic string
 }
 
 // receives a private (master key)
 // returns a map private to public key base58 encoded
-func DeriveKeys(masterKey string, startIndex, limit uint32)([]Key, error){
+func DeriveKeys(masterKey string, startIndex, limit uint32) ([]Key, error) {
 	masterK, err := bip32.Deserialize([]byte(masterKey))
-	if err != nil{
+	if err != nil {
 		return nil, err
 	}
 	var keys []Key
@@ -92,15 +88,15 @@ func DeriveKeys(masterKey string, startIndex, limit uint32)([]Key, error){
 			log.Error(err)
 			continue
 		}
-		btcAddr, err :=  BTCAddr(k.PublicKey().B58Serialize())
+		btcAddr, err := BTCAddr(k.PublicKey().B58Serialize())
 		if err != nil {
 			log.Error(err)
 			return nil, err
 		}
 		key := Key{
-			Private: k.B58Serialize(),
-			Public:  k.PublicKey().B58Serialize(),
-			BTCPublic: btcAddr, 
+			Private:   k.B58Serialize(),
+			Public:    k.PublicKey().B58Serialize(),
+			BTCPublic: btcAddr,
 		}
 		keys = append(keys, key)
 	}
