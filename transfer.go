@@ -108,8 +108,8 @@ func NewOutTransaction(to string, amount int64) (*wire.TxOut, error) {
 // Receives the public bitcoin public address.
 // Returns the previous transactions as a wire message
 // and the total amount available to transfer.
-// We are using blockchain.info to get the transactionhash
-// + index for each transaction previously received.
+// We are using blockchain.info api to get the transaction hash
+// and index for each transaction previously received.
 func Unspent(address string) (*wire.MsgTx, int64, error) {
 	var err error
 	cl, err := blockchain.New()

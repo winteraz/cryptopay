@@ -2,13 +2,15 @@ package cryptopay
 
 import (
 	"github.com/bartekn/go-bip39"
+	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg"
-
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcutil/hdkeychain"
 	"github.com/tyler-smith/go-bip32"
 
+	"crypto/ecdsa"
+	"fmt"
 	log "github.com/golang/glog"
 )
 
@@ -70,8 +72,61 @@ func NewMaster(passw string) (mnemonic, b58 string, err error) {
 	return mnemonic, masterKey.B58Serialize(), nil
 }
 
+func (k *Key) PrivateECDSA() (*ecdsa.PrivateKey, error) {
+	if k.private == false {
+		return nil, fmt.Errorf("key is not private")
+	}
+	priv, err := k.Private()
+	if err != nil {
+		return nil, err
+	}
+	privKey, err := hdkeychain.NewKeyFromString(priv)
+	if err != nil {
+		log.Error(err)
+		return nil, err
+	}
+	ecPriv, err := privKey.ECPrivKey()
+	if err != nil {
+		return nil, err
+	}
+	return ecPriv.ToECDSA(), nil
+}
+
+// creates the Wallet Import Format string encoding of a WIF structure.
+func (k *Key) WIF() (string, error) {
+	p, err := k.PrivateECDSA()
+	if err != nil {
+		return "", err
+	}
+	compress := false //?
+	wf, err := btcutil.NewWIF((*btcec.PrivateKey)(p), &chaincfg.MainNetParams, compress)
+	if err != nil {
+		return "", err
+	}
+	return wf.String(), nil
+}
+
+// base 58
+func (k *Key) Private() (string, error) {
+	if !k.private {
+		return "", fmt.Errorf("key is not private")
+	}
+	return k.k.B58Serialize(), nil
+}
+
+// base 58
+func (k *Key) Public() (string, error) {
+	return k.k.PublicKey().B58Serialize(), nil
+}
+
+func (k *Key) PublicBTC() (string, error) {
+	return BTCAddr(k.k.PublicKey().B58Serialize())
+
+}
+
 type Key struct {
-	Private, Public, BTCPublic string
+	private bool
+	k       *bip32.Key
 }
 
 // receives a private (master key)
@@ -88,16 +143,8 @@ func DeriveKeys(masterKey string, startIndex, limit uint32) ([]Key, error) {
 			log.Error(err)
 			continue
 		}
-		btcAddr, err := BTCAddr(k.PublicKey().B58Serialize())
-		if err != nil {
-			log.Error(err)
-			return nil, err
-		}
-		key := Key{
-			Private:   k.B58Serialize(),
-			Public:    k.PublicKey().B58Serialize(),
-			BTCPublic: btcAddr,
-		}
+
+		key := Key{private: true, k: k}
 		keys = append(keys, key)
 	}
 	return keys, nil
