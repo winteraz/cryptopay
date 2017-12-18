@@ -50,26 +50,38 @@ func BTCAddr(pubKeyEncoded string) (string, error) {
 }
 
 // returns a new masterkey along with its base58encoded form
-func NewMaster(passw string) (mnemonic, b58 string, err error) {
+func NewMaster(passw string) (*Key, error) {
 	entropy, err := bip39.NewEntropy(256)
 	if err != nil {
 		log.Error(err)
-		return
+		return nil, err
 	}
-	mnemonic, err = bip39.NewMnemonic(entropy)
+	mnemonic, err := bip39.NewMnemonic(entropy)
 	if err != nil {
 		log.Error(err)
-		return "", "", err
+		return nil, err
 	}
+	return NewFromMnemonic(mnemonic, passw)
+}
+
+func NewFromMnemonic(mnemonic, passw string) (*Key, error) {
 	// Generate a Bip32 HD wallet for the mnemonic and a user supplied password
-	seed := bip39.NewSeed(mnemonic, "somepassword")
+	seed := bip39.NewSeed(mnemonic, passw)
 	// Create master private key from seed
 	masterKey, err := bip32.NewMasterKey(seed)
 	if err != nil {
 		log.Error(err)
-		return "", "", err
+		return nil, err
 	}
-	return mnemonic, masterKey.B58Serialize(), nil
+	k := &Key{k: masterKey, mnemonic: mnemonic, private: true}
+	return k, nil
+}
+
+func (k *Key) Mnemonic() (string, error) {
+	if k.mnemonic == "" {
+		return "", fmt.Errorf("no mnemonic available")
+	}
+	return k.mnemonic, nil
 }
 
 func (k *Key) PrivateECDSA() (*ecdsa.PrivateKey, error) {
@@ -125,8 +137,9 @@ func (k *Key) PublicBTC() (string, error) {
 }
 
 type Key struct {
-	private bool
-	k       *bip32.Key
+	private  bool
+	k        *bip32.Key
+	mnemonic string
 }
 
 // receives a private (master key)
