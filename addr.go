@@ -1,164 +1,220 @@
 package cryptopay
 
 import (
+	"encoding/hex"
+	"fmt"
 	"github.com/bartekn/go-bip39"
-	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcd/txscript"
+	//	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcutil/hdkeychain"
-	"github.com/tyler-smith/go-bip32"
-
-	"crypto/ecdsa"
-	"fmt"
+	"github.com/ethereum/go-ethereum/crypto"
 	log "github.com/golang/glog"
 )
 
-// receive base58 encoded public key and returns the bitcoin public address
-func BTCAddr(pubKeyEncoded string) (string, error) {
-	acct0Pub, err := hdkeychain.NewKeyFromString(pubKeyEncoded)
-	if err != nil {
-		return "", err
-	}
-	// m/49'/1'/0'/0
-	acct0ExternalPub, err := acct0Pub.Child(0)
-	if err != nil {
-		return "", err
-	}
-	// bitcoin address 0
-	// m/49'/1'/0'/0/0
-	acct0External0Pub, err := acct0ExternalPub.Child(0)
-	if err != nil {
-		return "", err
-	}
-	// BIP49 segwit pay-to-script-hash style address.
-	pubKey, err := acct0External0Pub.ECPubKey()
-	if err != nil {
-		return "", err
-	}
-	keyHash := btcutil.Hash160(pubKey.SerializeCompressed())
-	scriptSig, err := txscript.NewScriptBuilder().AddOp(txscript.OP_0).AddData(keyHash).Script()
-	if err != nil {
-		return "", err
-	}
-	acct0ExtAddr0, err := btcutil.NewAddressScriptHash(scriptSig, &chaincfg.MainNetParams)
-	if err != nil {
-		return "", err
-	}
-	return acct0ExtAddr0.String(), nil
-
-}
-
 // returns a new masterkey along with its base58encoded form
-func NewMaster(passw string) (*Key, error) {
+func NewMaster(passw string) (private, public *Key, mnemonic string, err error) {
 	entropy, err := bip39.NewEntropy(256)
 	if err != nil {
 		log.Error(err)
-		return nil, err
+		return nil, nil, "", err
 	}
-	mnemonic, err := bip39.NewMnemonic(entropy)
+	mnemonic, err = bip39.NewMnemonic(entropy)
 	if err != nil {
 		log.Error(err)
-		return nil, err
+		return nil, nil, "", err
 	}
-	return NewFromMnemonic(mnemonic, passw)
+	private, public, err = NewFromMnemonic(mnemonic, passw)
+	return
 }
 
-func NewFromMnemonic(mnemonic, passw string) (*Key, error) {
+func NewFromMnemonic(mnemonic, passw string) (private, public *Key, err error) {
 	// Generate a Bip32 HD wallet for the mnemonic and a user supplied password
 	seed := bip39.NewSeed(mnemonic, passw)
 	// Create master private key from seed
-	masterKey, err := bip32.NewMasterKey(seed)
+	master, err := hdkeychain.NewMaster(seed, &chaincfg.MainNetParams)
 	if err != nil {
-		log.Error(err)
-		return nil, err
+		return nil, nil, err
 	}
-	k := &Key{k: masterKey, mnemonic: mnemonic, private: true}
-	return k, nil
+	private = (*Key)(master)
+	neut, err := master.Neuter()
+	if err != nil {
+		return nil, nil, err
+	}
+	public = (*Key)(neut)
+	return private, public, nil
 }
 
-func (k *Key) Mnemonic() (string, error) {
-	if k.mnemonic == "" {
-		return "", fmt.Errorf("no mnemonic available")
-	}
-	return k.mnemonic, nil
+// Encodes the extended key into base58. It's recommended to use this format
+// for root keys only.
+func (k *Key) Base58() string {
+	return (*hdkeychain.ExtendedKey)(k).String()
 }
 
-func (k *Key) PrivateECDSA() (*ecdsa.PrivateKey, error) {
-	if k.private == false {
-		return nil, fmt.Errorf("key is not private")
-	}
-	priv, err := k.Private()
+// parse the base58 encoded key
+func ParseKey(k string) (*Key, error) {
+	ke, err := hdkeychain.NewKeyFromString(k)
 	if err != nil {
 		return nil, err
 	}
-	privKey, err := hdkeychain.NewKeyFromString(priv)
-	if err != nil {
-		log.Error(err)
-		return nil, err
-	}
-	ecPriv, err := privKey.ECPrivKey()
-	if err != nil {
-		return nil, err
-	}
-	return ecPriv.ToECDSA(), nil
+	return (*Key)(ke), nil
 }
 
-// creates the Wallet Import Format string encoding of a WIF structure.
-func (k *Key) WIF() (string, error) {
-	p, err := k.PrivateECDSA()
+func (k *Key) RootWIF() (string, error) {
+	compress := true //?
+	priv, err := (*hdkeychain.ExtendedKey)(k).ECPrivKey()
 	if err != nil {
 		return "", err
 	}
-	compress := false //?
-	wf, err := btcutil.NewWIF((*btcec.PrivateKey)(p), &chaincfg.MainNetParams, compress)
+	wf, err := btcutil.NewWIF(priv, &chaincfg.MainNetParams, compress)
 	if err != nil {
 		return "", err
 	}
 	return wf.String(), nil
 }
 
-// base 58
-func (k *Key) Private() (string, error) {
-	if !k.private {
-		return "", fmt.Errorf("key is not private")
+// creates the Wallet Import Format string encoding of a WIF structure.
+func (k *Key) WIF(coinTyp CoinType, account, index uint32) (string, error) {
+	acctXExternalX, err := k.deriveKey(coinTyp, account, index)
+	if err != nil {
+		return "", err
 	}
-	return k.k.B58Serialize(), nil
+	return acctXExternalX.RootWIF()
 }
 
-// base 58
-func (k *Key) Public() (string, error) {
-	return k.k.PublicKey().B58Serialize(), nil
-}
+// https://github.com/libbitcoin/libbitcoin/wiki/Altcoin-Version-Mappings
+// https://github.com/satoshilabs/slips/blob/master/slip-0044.md
+type CoinType uint32
 
-func (k *Key) PublicBTC() (string, error) {
-	return BTCAddr(k.k.PublicKey().B58Serialize())
+const (
+	BTC CoinType = 0
+	BCH CoinType = 145
+	ETH CoinType = 60
+)
 
-}
-
-type Key struct {
-	private  bool
-	k        *bip32.Key
-	mnemonic string
-}
-
-// receives a private (master key)
-// returns a map private to public key base58 encoded
-func DeriveKeys(masterKey string, startIndex, limit uint32) ([]Key, error) {
-	masterK, err := bip32.Deserialize([]byte(masterKey))
+func (k *Key) deriveKey(coinTyp CoinType, account, index uint32) (*Key, error) {
+	// m/49'
+	purpose, err := (*hdkeychain.ExtendedKey)(k).Child(49)
 	if err != nil {
 		return nil, err
 	}
-	var keys []Key
+
+	// m/49'/1'
+	coinType, err := purpose.Child(uint32(coinTyp))
+	if err != nil {
+		return nil, err
+	}
+
+	// m/49'/1'/0'
+	acctX, err := coinType.Child(account)
+	if err != nil {
+		return nil, err
+	}
+	// Derive the extended key for the account 0 external chain.  This
+	// gives the path:
+	//   m/0H/0
+	// 0 is external, 1 is internal address (used for change, wallet software)
+	// https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
+	acctXExt, err := acctX.Child(0)
+	if err != nil {
+		return nil, err
+	}
+	// Derive the Indexth extended key for the account X external chain.
+	// m/49'/1'/0'/0
+	acctXExternalX, err := acctXExt.Child(index)
+	if err != nil {
+		return nil, err
+	}
+	return (*Key)(acctXExternalX), nil
+}
+
+func (k *Key) PublicAddr(coinTyp CoinType, account, index uint32) (string, error) {
+	acctXExternalX, err := k.deriveKey(coinTyp, account, index)
+	if err != nil {
+		log.Error(err)
+		return "", err
+	}
+	switch coinTyp {
+	case BTC, BCH:
+		return acctXExternalX.publicBTCAddr()
+	case ETH:
+		return acctXExternalX.publicETHAddr()
+	}
+	return "", fmt.Errorf("Invalid coin type")
+}
+
+func (k Key) PrivateKey(coinTyp CoinType, account, index uint32) (string, error) {
+	acctXExternalX, err := k.deriveKey(coinTyp, account, index)
+	if err != nil {
+		log.Error(err)
+		return "", err
+	}
+	switch coinTyp {
+	case BTC, BCH:
+		return acctXExternalX.RootWIF()
+	case ETH:
+		return acctXExternalX.privateETH()
+	}
+	return "", fmt.Errorf("Invalid coin type")
+}
+
+func (k *Key) privateETH() (string, error) {
+	priv, err := (*hdkeychain.ExtendedKey)(k).ECPrivKey()
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(crypto.FromECDSA(priv.ToECDSA())), nil
+}
+
+// EIP55
+func (k *Key) publicETHAddr() (string, error) {
+	// EIP:
+	pubKey, err := (*hdkeychain.ExtendedKey)(k).ECPubKey()
+	if err != nil {
+		return "", err
+	}
+	return crypto.PubkeyToAddress(*pubKey.ToECDSA()).Hex(), nil
+}
+
+func (k *Key) publicBTCAddr() (string, error) {
+
+	pubKey, err := (*hdkeychain.ExtendedKey)(k).Address(&chaincfg.MainNetParams)
+	if err != nil {
+		return "", err
+	}
+	return pubKey.EncodeAddress(), nil
+	/*
+		// BIP49 segwit pay-to-script-hash style address.
+		pubKey, err := (*hdkeychain.ExtendedKey)(k).ECPubKey()
+		if err != nil {
+			return "", err
+		}
+
+		keyHash := btcutil.Hash160(pubKey.SerializeCompressed())
+		scriptSig, err := txscript.NewScriptBuilder().AddOp(txscript.OP_0).AddData(keyHash).Script()
+		if err != nil {
+			return "", err
+		}
+		addr, err := btcutil.NewAddressScriptHash(scriptSig, &chaincfg.MainNetParams)
+		if err != nil {
+			return "", err
+		}
+		return addr.String(), nil
+	*/
+}
+
+type Key hdkeychain.ExtendedKey
+
+// receives the master public key (Neuster) and returns a list of addresses ?
+func (masterPublicKey *Key) DeriveAddress(coin CoinType, account, startIndex, limit uint32) ([]string, error) {
+	var keys []string
 	for i := startIndex; i <= startIndex+limit; i++ {
-		k, err := masterK.NewChildKey(i)
+		k, err := masterPublicKey.PublicAddr(coin, account, i)
 		if err != nil {
 			log.Error(err)
 			continue
 		}
-
-		key := Key{private: true, k: k}
-		keys = append(keys, key)
+		keys = append(keys, k)
 	}
 	return keys, nil
 }
