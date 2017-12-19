@@ -73,6 +73,15 @@ func (k *Key) RootWIF() (string, error) {
 	return wf.String(), nil
 }
 
+func (k *Key) RootPrivateEIP55() (string, error) {
+	return k.privateETH()
+
+}
+func (k *Key) RootPublicEIP55() (string, error) {
+	return k.publicETHAddr()
+
+}
+
 // creates the Wallet Import Format string encoding of a WIF structure.
 func (k *Key) WIF(coinTyp CoinType, account, index uint32) (string, error) {
 	acctXExternalX, err := k.deriveKey(coinTyp, account, index)
