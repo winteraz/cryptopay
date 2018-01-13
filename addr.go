@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/bartekn/go-bip39"
 	"github.com/btcsuite/btcd/chaincfg"
-	//	"github.com/btcsuite/btcd/txscript"
+	// "github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcutil/hdkeychain"
 	"github.com/ethereum/go-ethereum/crypto"

@@ -1,5 +1,6 @@
 package cryptopay
 
+/*
 import (
 	"encoding/hex"
 	"errors"
@@ -164,3 +165,4 @@ func chainInputToTx(tx *blockchain.Inputs) (*wire.TxIn, error) {
 	txIn := wire.NewTxIn(outPoint, script, witness)
 	return txIn, nil
 }
+*/

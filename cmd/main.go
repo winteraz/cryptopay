@@ -1,23 +1,29 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"github.com/winteraz/cryptopay"
 )
 
 func main() {
-	pass := "somepass"
-
-	priv, pub, mnemonic, err := cryptopay.NewMaster(pass)
-	if err != nil {
-		panic(err)
-	}
-
-	// priv, pub, err := cryptopay.NewFromMnemonic(mnemonic, pass)
-	// master key/wallet
-	masterWIF, err := priv.RootWIF()
-	if err != nil {
-		panic(err)
+	pass := flag.String("pass", "", "password to harden the key generation")
+	mnemonicIn := flag.String("mnemonic", "", "if set it will generate the keys from the mnemonic")
+	flag.Parse()
+	var priv, pub *cryptopay.Key
+	var err error
+	var masterWIF, mnemonic string
+	if *mnemonicIn == "" {
+		priv, pub, mnemonic, err = cryptopay.NewMaster(*pass)
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		mnemonic = *mnemonicIn
+		priv, pub, err = cryptopay.NewFromMnemonic(mnemonic, *pass)
+		if err != nil {
+			panic(err)
+		}
 	}
 	account := uint32(0)
 	index := uint32(1)
@@ -31,7 +37,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-
+	// master key/wallet
+	masterWIF, err = priv.RootWIF()
+	if err != nil {
+		panic(err)
+	}
 	fmt.Printf("mn %s \n", mnemonic)
 	fmt.Printf("BTC master wif %s\n", masterWIF)
 	fmt.Printf("BTC publicRoot %s\n\n", pub.Base58())
