@@ -1,4 +1,4 @@
-package cryptopay
+package wallet
 
 import (
 	"context"
@@ -34,7 +34,7 @@ type Transaction struct {
 type Wallet interface {
 	// depth How many addresses we should generate
 	// returns map[address]balance.
-	Balance(cx context.Context, coin cryptopay.CoinType, depth uint32) (map[string]uint64, error)
+	Balance(cx context.Context, depth uint32, coin ...cryptopay.CoinType) (map[cryptopay.CoinType]map[string]uint64, error)
 	BalanceByAddress(cx context.Context, coin cryptopay.CoinType, address string) (uint64, error)
 	MakeTransaction(cx context.Context, from, to string, typ cryptopay.CoinType, amount, fee uint64, depth uint32) ([]byte, error)
 	Transactions(cx context.Context, typ cryptopay.CoinType, depth uint32) ([]Transaction, error)
@@ -45,21 +45,26 @@ type wallet struct {
 	priv, pub *cryptopay.Key
 }
 
-func (w *wallet) Balance(cx context.Context, coin cryptopay.CoinType, depth uint32) (map[string]uint64, error) {
+func (w *wallet) Balance(cx context.Context, depth uint32, coins ...cryptopay.CoinType) (map[cryptopay.CoinType]map[string]uint64, error) {
+
 	account := uint32(0)
 	out := make(map[string]uint64)
-	for index := uint32(0); index <= depth; index++ {
-		// generate addresses
-		childPublic, err := w.pub.PublicAddr(coin, account, index)
-		if err != nil {
-			return nil, err
+	cm := make(map[cryptopay.CoinType]map[string]uint64)
+	for _, coin := range coins {
+		for index := uint32(0); index <= depth; index++ {
+			// generate addresses
+			childPublic, err := w.pub.PublicAddr(coin, account, index)
+			if err != nil {
+				return nil, err
+			}
+			out[childPublic], err = w.BalanceByAddress(cx, coin, childPublic)
+			if err != nil {
+				return nil, err
+			}
 		}
-		out[childPublic], err = w.BalanceByAddress(cx, coin, childPublic)
-		if err != nil {
-			return nil, err
-		}
+		cm[coin] = out
 	}
-	return out, nil
+	return cm, nil
 }
 
 func (w *wallet) BalanceByAddress(cx context.Context, coin cryptopay.CoinType, address string) (uint64, error) {
