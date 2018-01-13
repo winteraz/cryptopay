@@ -46,7 +46,6 @@ type wallet struct {
 }
 
 func (w *wallet) Balance(cx context.Context, depth uint32, coins ...cryptopay.CoinType) (map[cryptopay.CoinType]map[string]uint64, error) {
-
 	account := uint32(0)
 	out := make(map[string]uint64)
 	cm := make(map[cryptopay.CoinType]map[string]uint64)
