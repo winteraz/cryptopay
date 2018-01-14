@@ -84,7 +84,7 @@ func (k *Key) RootPublicEIP55() (string, error) {
 
 // creates the Wallet Import Format string encoding of a WIF structure.
 func (k *Key) WIF(coinTyp CoinType, account, index uint32) (string, error) {
-	acctXExternalX, err := k.deriveKey(coinTyp, account, index)
+	acctXExternalX, err := k.deriveKey(true, coinTyp, account, index)
 	if err != nil {
 		return "", err
 	}
@@ -95,27 +95,42 @@ func (k *Key) WIF(coinTyp CoinType, account, index uint32) (string, error) {
 // https://github.com/satoshilabs/slips/blob/master/slip-0044.md
 type CoinType uint32
 
+func (c CoinType) String() string {
+	switch c {
+	case BTC:
+		return "BTC"
+	case BCH:
+		return "BCH"
+	case ETH:
+		return "ETH"
+	}
+	return "invalid"
+}
+
 const (
 	BTC CoinType = 0
 	BCH CoinType = 145
 	ETH CoinType = 60
 )
 
-func (k *Key) deriveKey(coinTyp CoinType, account, index uint32) (*Key, error) {
+// derives a bip-44 hardened key derived up to the account level(purpose/coint type/account)
+// The public key may be used securely in non trusted environments to generate
+// addresses for the given coin/account.
+func (k *Key) deriveCoinKey(private bool, coinTyp CoinType, account uint32) (*Key, error) {
 	// m/49'
-	purpose, err := (*hdkeychain.ExtendedKey)(k).Child(49)
+	purpose, err := (*hdkeychain.ExtendedKey)(k).Child(44 + hdkeychain.HardenedKeyStart)
 	if err != nil {
 		return nil, err
 	}
 
-	// m/49'/1'
-	coinType, err := purpose.Child(uint32(coinTyp))
+	// m/44'/0'
+	coinType, err := purpose.Child(uint32(coinTyp) + hdkeychain.HardenedKeyStart)
 	if err != nil {
 		return nil, err
 	}
 
-	// m/49'/1'/0'
-	acctX, err := coinType.Child(account)
+	// m/44'/0'/0'
+	acctX, err := coinType.Child(account + hdkeychain.HardenedKeyStart)
 	if err != nil {
 		return nil, err
 	}
@@ -128,32 +143,61 @@ func (k *Key) deriveKey(coinTyp CoinType, account, index uint32) (*Key, error) {
 	if err != nil {
 		return nil, err
 	}
+	if !private {
+		return (*Key)(acctXExt), nil
+	}
+	acctXExternalPub, err := acctXExt.Neuter()
+	if err != nil {
+		return nil, err
+	}
+	return (*Key)(acctXExternalPub), nil
+}
+
+func (k *Key) deriveKey(private bool, coinTyp CoinType, account, index uint32) (*Key, error) {
+	acctXExternalPub, err := k.deriveCoinKey(private, coinTyp, account)
+	if err != nil {
+		return nil, err
+	}
 	// Derive the Indexth extended key for the account X external chain.
-	// m/49'/1'/0'/0
-	acctXExternalX, err := acctXExt.Child(index)
+	// m/44'/0'/0'/0
+	acctXExternalX, err := (*hdkeychain.ExtendedKey)(acctXExternalPub).Child(index)
 	if err != nil {
 		return nil, err
 	}
 	return (*Key)(acctXExternalX), nil
 }
 
+// k must be a hardened public key/Neuster
+func (k *Key) DerivePublicAddr(coinTyp CoinType, index uint32) (string, error) {
+	acctXExternalX, err := (*hdkeychain.ExtendedKey)(k).Child(index)
+	if err != nil {
+		return "", err
+	}
+	return (*Key)(acctXExternalX).PayAddress(coinTyp)
+}
+
 func (k *Key) PublicAddr(coinTyp CoinType, account, index uint32) (string, error) {
-	acctXExternalX, err := k.deriveKey(coinTyp, account, index)
+	acctXExternalX, err := k.deriveKey(false, coinTyp, account, index)
 	if err != nil {
 		log.Error(err)
 		return "", err
 	}
+	return (*Key)(acctXExternalX).PayAddress(coinTyp)
+}
+
+func (k *Key) PayAddress(coinTyp CoinType) (string, error) {
 	switch coinTyp {
 	case BTC, BCH:
-		return acctXExternalX.publicBTCAddr()
+		return k.publicBTCAddr()
 	case ETH:
-		return acctXExternalX.publicETHAddr()
+		return k.publicETHAddr()
 	}
 	return "", fmt.Errorf("Invalid coin type")
+
 }
 
 func (k Key) PrivateKey(coinTyp CoinType, account, index uint32) (string, error) {
-	acctXExternalX, err := k.deriveKey(coinTyp, account, index)
+	acctXExternalX, err := k.deriveKey(true, coinTyp, account, index)
 	if err != nil {
 		log.Error(err)
 		return "", err
@@ -186,30 +230,11 @@ func (k *Key) publicETHAddr() (string, error) {
 }
 
 func (k *Key) publicBTCAddr() (string, error) {
-
 	pubKey, err := (*hdkeychain.ExtendedKey)(k).Address(&chaincfg.MainNetParams)
 	if err != nil {
 		return "", err
 	}
 	return pubKey.EncodeAddress(), nil
-	/*
-		// BIP49 segwit pay-to-script-hash style address.
-		pubKey, err := (*hdkeychain.ExtendedKey)(k).ECPubKey()
-		if err != nil {
-			return "", err
-		}
-
-		keyHash := btcutil.Hash160(pubKey.SerializeCompressed())
-		scriptSig, err := txscript.NewScriptBuilder().AddOp(txscript.OP_0).AddData(keyHash).Script()
-		if err != nil {
-			return "", err
-		}
-		addr, err := btcutil.NewAddressScriptHash(scriptSig, &chaincfg.MainNetParams)
-		if err != nil {
-			return "", err
-		}
-		return addr.String(), nil
-	*/
 }
 
 type Key hdkeychain.ExtendedKey

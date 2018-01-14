@@ -10,18 +10,34 @@ type Unspender interface {
 	Unspent(addr string) ([]cryptopay.Unspent, error)
 }
 
+// from hardened public key(m/44/coin/account). This wallet is unable to sign transactions.
+func FromPublic(pub map[cryptopay.CoinType]map[uint32]string) (Wallet, error) {
+	if pub == nil || len(pub) == 0 {
+		return nil, errors.New("Invalid pub/empty")
+	}
+	pubKeyMap := make(map[cryptopay.CoinType]map[uint32]*cryptopay.Key)
+	for coin, m := range pub {
+		acctMap := make(map[uint32]*cryptopay.Key)
+
+		for acctIndex, pubs := range m {
+			k, err := cryptopay.ParseKey(pubs)
+			if err != nil {
+				return nil, err
+			}
+			acctMap[acctIndex] = k
+		}
+		pubKeyMap[coin] = acctMap
+	}
+	return &wallet{pub: pubKeyMap}, nil
+}
+
 func FromMnemonic(mnemonic, passwd string, unspender Unspender) (Wallet, error) {
 	// Check if the key is private or public.
-	private, public, err := cryptopay.NewFromMnemonic(mnemonic, passwd)
+	private, _, err := cryptopay.NewFromMnemonic(mnemonic, passwd)
 	if err != nil {
 		return nil, err
 	}
-	return &wallet{priv: private, pub: public, unspender: unspender}, nil
-}
-
-func FromPublic(mnemonic string, unspender Unspender) (Wallet, error) {
-	// Check if the key is private or public.
-	return nil, nil
+	return &wallet{priv: private, unspender: unspender}, nil
 }
 
 type Transaction struct {
@@ -32,31 +48,65 @@ type Transaction struct {
 }
 
 type Wallet interface {
+	Addresses(cx context.Context, account, limit uint32, coin cryptopay.CoinType) ([]string, error)
 	// depth How many addresses we should generate
 	// returns map[address]balance.
-	Balance(cx context.Context, depth uint32, coin ...cryptopay.CoinType) (map[cryptopay.CoinType]map[string]uint64, error)
+	Balance(cx context.Context, account, depth uint32, coin ...cryptopay.CoinType) (map[cryptopay.CoinType]map[string]uint64, error)
 	BalanceByAddress(cx context.Context, coin cryptopay.CoinType, address string) (uint64, error)
-	MakeTransaction(cx context.Context, from, to string, typ cryptopay.CoinType, amount, fee uint64, depth uint32) ([]byte, error)
+	MakeTransaction(cx context.Context, from, to string, typ cryptopay.CoinType, amount, fee uint64, acctDepth, addrDepth uint32) ([]byte, error)
 	Transactions(cx context.Context, typ cryptopay.CoinType, depth uint32) ([]Transaction, error)
 }
 
 type wallet struct {
 	unspender Unspender
-	priv, pub *cryptopay.Key
+	priv      *cryptopay.Key
+	// hardened public key of bip 44/coin/accountIndex path.
+	pub map[cryptopay.CoinType]map[uint32]*cryptopay.Key
 }
 
-func (w *wallet) Balance(cx context.Context, depth uint32, coins ...cryptopay.CoinType) (map[cryptopay.CoinType]map[string]uint64, error) {
-	account := uint32(0)
-	out := make(map[string]uint64)
-	cm := make(map[cryptopay.CoinType]map[string]uint64)
-	for _, coin := range coins {
-		for index := uint32(0); index <= depth; index++ {
-			// generate addresses
-			childPublic, err := w.pub.PublicAddr(coin, account, index)
+func (w *wallet) Addresses(cx context.Context, account, limit uint32, coin cryptopay.CoinType) ([]string, error) {
+	var sa []string
+	for index := uint32(0); index <= limit; index++ {
+		// generate addresses
+		// if we have a private key we can generate them directly for any coin
+		if w.priv != nil {
+			childPublic, err := w.priv.PublicAddr(coin, account, index)
 			if err != nil {
 				return nil, err
 			}
-			out[childPublic], err = w.BalanceByAddress(cx, coin, childPublic)
+			sa = append(sa, childPublic)
+			continue
+		}
+		// otherwise we need to have them already generated (per account/coin).
+		// This is due the fact bip-44 are hardened up to the account level so we can't use
+		// a root key to generate count/account chains.
+		if w.pub == nil || w.pub[coin] == nil {
+			return nil, errors.New("we have no public key for the given coin and account index")
+		}
+		k := w.pub[coin][account]
+		if k == nil {
+			return nil, errors.New("we have no public key for the given coin and account index")
+		}
+		childPublic, err := k.DerivePublicAddr(coin, index)
+		if err != nil {
+			return nil, err
+		}
+		sa = append(sa, childPublic)
+	}
+	return sa, nil
+}
+
+func (w *wallet) Balance(cx context.Context, account, depth uint32, coins ...cryptopay.CoinType) (map[cryptopay.CoinType]map[string]uint64, error) {
+	out := make(map[string]uint64)
+	cm := make(map[cryptopay.CoinType]map[string]uint64)
+	for _, coin := range coins {
+		// generate addresses
+		addra, err := w.Addresses(cx, account, depth, coin)
+		if err != nil {
+			return nil, err
+		}
+		for _, addr := range addra {
+			out[addr], err = w.BalanceByAddress(cx, coin, addr)
 			if err != nil {
 				return nil, err
 			}
@@ -80,55 +130,6 @@ func (w *wallet) BalanceByAddress(cx context.Context, coin cryptopay.CoinType, a
 		amount += un.Amount
 	}
 	return amount, nil
-}
-
-var DefaultDepth = uint32(999)
-
-// This actually works only for bitcoin at this time.
-// If fee is zero it will try to guess the optimal fee.
-// depth - level to lookup for addresses into wallet down the chain.
-func (w *wallet) MakeTransaction(cx context.Context, from, to string, coin cryptopay.CoinType, amount, fee uint64, depth uint32) ([]byte, error) {
-	if fee == 0 {
-		return nil, errors.New("Transaction with fee zero can't be processed")
-	}
-	if w.priv == nil {
-		return nil, errors.New("Wallet is missing a private key! Can't create transactions with public keys")
-	}
-	// find the private key for "From"
-	account := uint32(0)
-	var priv string
-	var pub string
-	var err error
-	for index := uint32(0); index <= depth; index++ {
-		// generate addresses
-		pub, err = w.pub.PublicAddr(coin, account, index)
-		if err != nil {
-			return nil, err
-		}
-		if pub != from {
-			continue
-		}
-		priv, err = w.priv.PrivateKey(coin, account, index)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if priv == "" {
-		return nil, errors.New("'From'  was not found in the given wallet")
-	}
-	// make sure we have enough balance
-	unspent, err := w.BalanceByAddress(cx, coin, pub)
-	if err != nil {
-		return nil, err
-	}
-	if (amount + fee) > unspent {
-		return nil, errors.New("Amount + fee is higher than the unspent amount")
-	}
-	unspentTX, err := w.unspender.Unspent(pub)
-	if err != nil {
-		return nil, err
-	}
-	return cryptopay.MakeTransactionBTC(priv, to, amount, fee, unspentTX)
 }
 
 // Bug: currently it only includes unspent transaction

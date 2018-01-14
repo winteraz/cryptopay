@@ -2,6 +2,7 @@ package cryptopay
 
 import (
 	"encoding/hex"
+	"errors"
 	"github.com/bitgoin/address"
 	"github.com/bitgoin/tx"
 )
@@ -69,4 +70,12 @@ func ToUTXO(utxos []Unspent, privs string) (tx.UTXOs, error) {
 		}
 	}
 	return txs, nil
+}
+
+func EstimateFee(c CoinType, tx []byte) (uint64, error) {
+	switch c {
+	case BTC:
+		return uint64(1000 * len(tx)), nil // 1000 satoshi per byte
+	}
+	return 0, errors.New("Not handled")
 }
