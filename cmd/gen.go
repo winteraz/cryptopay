@@ -5,7 +5,9 @@ import (
 	"fmt"
 	log "github.com/golang/glog"
 	"github.com/winteraz/cryptopay"
+	"github.com/winteraz/cryptopay/blockchain"
 	"github.com/winteraz/cryptopay/wallet"
+	"net/http"
 	"strings"
 )
 
@@ -23,14 +25,19 @@ func main() {
 	genAddr := flag.Bool("addr", false, "if set it will addresses(public and private")
 	depth := flag.Int("depth", 0, "depth of address generation")
 	accts := flag.Int("accts", 1, "number of accounts")
-	coinType := flag.Int("coin", 0, "coin type (0 is for bitcoin)")
+	coin := flag.Int("coin", 0, "the coin of the wallet, default is 0 (BTC)")
+
+	move := flag.Bool("move", false, "move the wallet to a new address")
+	toAddr := flag.String("toAddr", "", "the address to send the wallet to")
 	flag.Parse()
 
 	trimString(mnemonicIn, pass)
 
 	switch {
+	case *move:
+		moveWallet(*mnemonicIn, *pass, cryptopay.CoinType(*coin), *toAddr)
 	case *genAddr:
-		generateAddr(*mnemonicIn, *pass, uint32(*accts), uint32(*depth), cryptopay.CoinType(*coinType))
+		generateAddr(*mnemonicIn, *pass, uint32(*accts), uint32(*depth), cryptopay.CoinType(*coin))
 	default:
 		generate(mnemonicIn, pass)
 	}
@@ -40,7 +47,7 @@ func generateAddr(mnemonic, pass string, accts, depth uint32, coin cryptopay.Coi
 	if mnemonic == "" {
 		log.Fatalf("Invalid mnemonic")
 	}
-	w, err := wallet.FromMnemonic(mnemonic, pass, nil)
+	w, err := wallet.FromMnemonic(mnemonic, pass, blockchain.New(http.DefaultClient))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -72,7 +79,7 @@ func generate(mnemonicIn, pass *string) {
 		}
 	}
 
-	fmt.Printf("mnemonic %q \n", mnemonic)
+	fmt.Printf("mnemonic %q \n pass %q\n", mnemonic, *pass)
 
 	coins := []cryptopay.CoinType{cryptopay.BTC, cryptopay.BCH, cryptopay.ETH}
 	account := uint32(0)
@@ -103,4 +110,22 @@ func generate(mnemonicIn, pass *string) {
 		fmt.Printf("first child address %q\n\n", childPublic)
 	}
 
+}
+
+func moveWallet(mnemonic, pass string, coin cryptopay.CoinType, toAddr string) {
+	if mnemonic == "" {
+		log.Fatalf("Invalid mnemonic")
+	}
+	w, err := wallet.FromMnemonic(mnemonic, pass, blockchain.New(http.DefaultClient))
+	if err != nil {
+		log.Fatal(err)
+	}
+	const accountsGap, addressGap = uint32(4), uint32(20)
+	txa, err := w.Move(nil, map[cryptopay.CoinType]string{coin: toAddr}, accountsGap, addressGap)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for coin, tx := range txa {
+		fmt.Printf("%s: %s", coin, tx)
+	}
 }

@@ -7,10 +7,12 @@ import (
 )
 
 type Unspender interface {
+	HasTransactions(cx context.Context, coin cryptopay.CoinType, addr ...string) (map[string]bool, error)
 	Unspent(cx context.Context, coin cryptopay.CoinType, addr ...string) (map[string][]cryptopay.Unspent, error)
 }
 
 // from hardened public key(m/44/coin/account). This wallet is unable to sign transactions.
+// receives a map[coin]map[account]Extended public key
 func FromPublic(pub map[cryptopay.CoinType]map[uint32]string) (Wallet, error) {
 	if pub == nil || len(pub) == 0 {
 		return nil, errors.New("Invalid pub/empty")
@@ -54,6 +56,7 @@ type Wallet interface {
 	Balance(cx context.Context, account, depth uint32, coin ...cryptopay.CoinType) (map[cryptopay.CoinType]map[string]uint64, error)
 	BalanceByAddress(cx context.Context, coin cryptopay.CoinType, address string) (uint64, error)
 	MakeTransaction(cx context.Context, from, to string, typ cryptopay.CoinType, amount, fee uint64, acctDepth, addrDepth uint32) ([]byte, error)
+	Move(cx context.Context, to map[cryptopay.CoinType]string, accountsGap, addressGap uint32) (map[cryptopay.CoinType][][]byte, error)
 	Transactions(cx context.Context, typ cryptopay.CoinType, depth uint32) ([]Transaction, error)
 }
 
