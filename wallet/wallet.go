@@ -7,7 +7,7 @@ import (
 )
 
 type Unspender interface {
-	Unspent(addr string) ([]cryptopay.Unspent, error)
+	Unspent(cx context.Context, coin cryptopay.CoinType, addr ...string) (map[string][]cryptopay.Unspent, error)
 }
 
 // from hardened public key(m/44/coin/account). This wallet is unable to sign transactions.
@@ -118,12 +118,12 @@ func (w *wallet) Balance(cx context.Context, account, depth uint32, coins ...cry
 
 func (w *wallet) BalanceByAddress(cx context.Context, coin cryptopay.CoinType, address string) (uint64, error) {
 	// Get the balance
-	unspent, err := w.unspender.Unspent(address)
+	unspent, err := w.unspender.Unspent(cx, coin, address)
 	if err != nil {
 		return 0, err
 	}
 	var amount uint64
-	for _, un := range unspent {
+	for _, un := range unspent[address] {
 		if un.Confirmations == 0 {
 			continue
 		}

@@ -48,11 +48,11 @@ func (w *wallet) MakeTransaction(cx context.Context, from, to string, coin crypt
 	if (amount + fee) > unspent {
 		return nil, errors.New("Amount + fee is higher than the unspent amount")
 	}
-	unspentTX, err := w.unspender.Unspent(from)
+	unspentTX, err := w.unspender.Unspent(cx, coin, from)
 	if err != nil {
 		return nil, err
 	}
-	return cryptopay.MakeTransactionBTC(priv, to, amount, fee, unspentTX)
+	return cryptopay.MakeTransactionBTC(priv, to, amount, fee, unspentTX[from])
 }
 
 // Move the wallet to a different provider/address
@@ -124,9 +124,9 @@ func (w *wallet) Move(cx context.Context, to map[cryptopay.CoinType]string) (map
 
 func makeTransaction(cx context.Context, unspender Unspender, priv, from, to string, coin cryptopay.CoinType, amount, fee uint64) ([]byte, error) {
 
-	unspentTX, err := unspender.Unspent(from)
+	unspentTX, err := unspender.Unspent(cx, coin, from)
 	if err != nil {
 		return nil, err
 	}
-	return cryptopay.MakeTransactionBTC(priv, to, amount, fee, unspentTX)
+	return cryptopay.MakeTransactionBTC(priv, to, amount, fee, unspentTX[from])
 }
