@@ -3,17 +3,18 @@ package main
 import (
 	"flag"
 	"fmt"
-	"strings"
+	log "github.com/golang/glog"
 	"github.com/winteraz/cryptopay"
 	"github.com/winteraz/cryptopay/wallet"
+	"strings"
 )
 
-func trimString(s ...*string){
-	for _, v := range s{
+func trimString(s ...*string) {
+	for _, v := range s {
 		*v = strings.TrimPrefix(*v, `"`)
 		*v = strings.TrimSuffix(*v, `"`)
 	}
-	return 
+	return
 }
 
 func main() {
@@ -29,84 +30,77 @@ func main() {
 
 	switch {
 	case *genAddr:
-		generateAddr(*mnemonicIn, *pass, uint32(*accts),uint32(*depth),  cryptopay.CoinType(*coinType))
+		generateAddr(*mnemonicIn, *pass, uint32(*accts), uint32(*depth), cryptopay.CoinType(*coinType))
 	default:
 		generate(mnemonicIn, pass)
 	}
 }
 
 func generateAddr(mnemonic, pass string, accts, depth uint32, coin cryptopay.CoinType) {
-	if mnemonic == ""{
-		panic("Invalid mnemonic")
+	if mnemonic == "" {
+		log.Fatalf("Invalid mnemonic")
 	}
-	w, err := wallet.FromMnemonic(mnemonic, pass, nil )
+	w, err := wallet.FromMnemonic(mnemonic, pass, nil)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	var sa []string
-	for acct := uint32(0); acct<= accts; acct++{
+	for acct := uint32(0); acct <= accts; acct++ {
 		addra, err := w.Addresses(nil, acct, depth, cryptopay.BTC)
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 		sa = append(sa, addra...)
 	}
-		fmt.Printf("mnemonic %v\n pass %q, addresses \n %q", mnemonic, pass, sa)
+	fmt.Printf("mnemonic %v\n pass %q, addresses \n %q", mnemonic, pass, sa)
 }
 
 func generate(mnemonicIn, pass *string) {
-	var priv, pub *cryptopay.Key
+	var priv *cryptopay.Key
 	var err error
-	var masterWIF, mnemonic string
+	var mnemonic string
 	if *mnemonicIn == "" {
-		priv, pub, mnemonic, err = cryptopay.NewMaster(*pass)
+		priv, _, mnemonic, err = cryptopay.NewMaster(*pass)
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 	} else {
 		mnemonic = *mnemonicIn
-		priv, pub, err = cryptopay.NewFromMnemonic(mnemonic, *pass)
+		priv, _, err = cryptopay.NewFromMnemonic(mnemonic, *pass)
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 	}
+
+	fmt.Printf("mnemonic %q \n", mnemonic)
+
+	coins := []cryptopay.CoinType{cryptopay.BTC, cryptopay.BCH, cryptopay.ETH}
 	account := uint32(0)
-	index := uint32(1)
-	cointTyp := cryptopay.BTC
+	index := uint32(0)
+	for _, coin := range coins {
+		childPrivate, err := priv.PrivateKey(coin, account, index)
+		if err != nil {
+			log.Fatal(err)
+		}
+		extendedPub, err := priv.DeriveExtendedKey(false, coin, account)
+		if err != nil {
+			log.Fatal(err)
+		}
+		childPublic, err := extendedPub.DerivePublicAddr(coin, index)
+		if err != nil {
+			log.Fatal(err)
+		}
 
-	childPublic, err := pub.PublicAddr(cointTyp, account, index)
-	if err != nil {
-		panic(err)
+		rootKey, err := priv.PrivateRoot(coin)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("%s\n", coin.String())
+		fmt.Printf("masterKey(coin native format)  %q\n", rootKey)
+		fmt.Printf("masterKey(bip-32/base58 formt)  %q\n", priv.Base58())
+		fmt.Printf("BIP32 Extended Public Key %q\n", extendedPub.Base58())
+		fmt.Printf("first child private %q\n", childPrivate)
+		fmt.Printf("first child address %q\n\n", childPublic)
 	}
-	childPrivate, err := priv.PrivateKey(cointTyp, account, index)
-	if err != nil {
-		panic(err)
-	}
-	// master key/wallet
-	masterWIF, err = priv.RootWIF()
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("mn %s \n", mnemonic)
-	fmt.Printf("BTC master wif %s\n", masterWIF)
-	fmt.Printf("BTC publicRoot %s\n\n", pub.Base58())
-	fmt.Printf("BTC Child first priv %s\n", childPrivate)
-	fmt.Printf("BTC Child first pub %s\n\n\n\n", childPublic)
-
-	cointTyp = cryptopay.ETH
-	rootPrivEIP55, _ := priv.RootPrivateEIP55()
-	rootPubEIP55, _ := pub.RootPublicEIP55()
-	childPublic, err = pub.PublicAddr(cointTyp, account, index)
-	if err != nil {
-		panic(err)
-	}
-	childPrivate, err = priv.PrivateKey(cointTyp, account, index)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("ETH private Root  %s\n", rootPrivEIP55)
-	fmt.Printf("ETH publicRoot %s\n\n", rootPubEIP55)
-	fmt.Printf("ETH Child first priv %s\n", childPrivate)
-	fmt.Printf("ETH Child first pub %s\n", childPublic)
 
 }

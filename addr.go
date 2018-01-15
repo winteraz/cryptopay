@@ -116,7 +116,7 @@ const (
 // derives a bip-44 hardened key derived up to the account level(purpose/coint type/account)
 // The public key may be used securely in non trusted environments to generate
 // addresses for the given coin/account.
-func (k *Key) deriveCoinKey(private bool, coinTyp CoinType, account uint32) (*Key, error) {
+func (k *Key) DeriveExtendedKey(private bool, coinTyp CoinType, account uint32) (*Key, error) {
 	// m/49'
 	purpose, err := (*hdkeychain.ExtendedKey)(k).Child(44 + hdkeychain.HardenedKeyStart)
 	if err != nil {
@@ -143,7 +143,7 @@ func (k *Key) deriveCoinKey(private bool, coinTyp CoinType, account uint32) (*Ke
 	if err != nil {
 		return nil, err
 	}
-	if !private {
+	if private {
 		return (*Key)(acctXExt), nil
 	}
 	acctXExternalPub, err := acctXExt.Neuter()
@@ -154,13 +154,13 @@ func (k *Key) deriveCoinKey(private bool, coinTyp CoinType, account uint32) (*Ke
 }
 
 func (k *Key) deriveKey(private bool, coinTyp CoinType, account, index uint32) (*Key, error) {
-	acctXExternalPub, err := k.deriveCoinKey(private, coinTyp, account)
+	acctXExternal, err := k.DeriveExtendedKey(private, coinTyp, account)
 	if err != nil {
 		return nil, err
 	}
 	// Derive the Indexth extended key for the account X external chain.
 	// m/44'/0'/0'/0
-	acctXExternalX, err := (*hdkeychain.ExtendedKey)(acctXExternalPub).Child(index)
+	acctXExternalX, err := (*hdkeychain.ExtendedKey)(acctXExternal).Child(index)
 	if err != nil {
 		return nil, err
 	}
@@ -211,6 +211,17 @@ func (k Key) PrivateKey(coinTyp CoinType, account, index uint32) (string, error)
 	return "", fmt.Errorf("Invalid coin type")
 }
 
+func (k Key) PrivateRoot(coinTyp CoinType) (string, error) {
+
+	switch coinTyp {
+	case BTC, BCH:
+		return k.RootWIF()
+	case ETH:
+		return k.privateETH()
+	}
+	return "", fmt.Errorf("Invalid coin type")
+}
+
 func (k *Key) privateETH() (string, error) {
 	priv, err := (*hdkeychain.ExtendedKey)(k).ECPrivKey()
 	if err != nil {
@@ -238,17 +249,3 @@ func (k *Key) publicBTCAddr() (string, error) {
 }
 
 type Key hdkeychain.ExtendedKey
-
-// receives the master public key (Neuster) and returns a list of addresses ?
-func (masterPublicKey *Key) DeriveAddress(coin CoinType, account, startIndex, limit uint32) ([]string, error) {
-	var keys []string
-	for i := startIndex; i <= startIndex+limit; i++ {
-		k, err := masterPublicKey.PublicAddr(coin, account, i)
-		if err != nil {
-			log.Error(err)
-			continue
-		}
-		keys = append(keys, k)
-	}
-	return keys, nil
-}
