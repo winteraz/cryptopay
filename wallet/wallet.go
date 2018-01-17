@@ -6,6 +6,32 @@ import (
 	"github.com/winteraz/cryptopay"
 )
 
+type HasTransactionsFunc func(cx context.Context, addr ...string) (map[string]bool, error)
+type UnspentFunc func(cx context.Context, addr ...string) (map[string][]cryptopay.Unspent, error)
+type CountTransactionsFunc func(cx context.Context, addr ...string) (map[string]uint64, error)
+
+func NewUnspender(trans HasTransactionsFunc, unspent UnspentFunc, counter CountTransactionsFunc) Unspender {
+	return unspend{hasTransactions: trans, unspent: unspent, counter: counter}
+}
+
+type unspend struct {
+	hasTransactions HasTransactionsFunc
+	unspent         UnspentFunc
+	counter         CountTransactionsFunc
+}
+
+func (u unspend) HasTransactions(cx context.Context, addr ...string) (map[string]bool, error) {
+	return u.hasTransactions(cx, addr...)
+}
+
+func (u unspend) Unspent(cx context.Context, addr ...string) (map[string][]cryptopay.Unspent, error) {
+	return u.unspent(cx, addr...)
+}
+
+func (u unspend) CountTransactions(cx context.Context, addr ...string) (map[string]uint64, error) {
+	return u.counter(cx, addr...)
+}
+
 type Unspender interface {
 	HasTransactions(cx context.Context, addr ...string) (map[string]bool, error)
 	Unspent(cx context.Context, addr ...string) (map[string][]cryptopay.Unspent, error)
