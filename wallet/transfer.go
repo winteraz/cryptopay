@@ -193,10 +193,27 @@ func (w *wallet) withdrawAddress(cx context.Context, toAddr string, kind bool, i
 }
 
 func makeTransaction(cx context.Context, unspender Unspender, priv *cryptopay.Key, from, to string, coin cryptopay.CoinType, amount, fee uint64) ([]byte, error) {
-
-	unspentTX, err := unspender.Unspent(cx, from)
-	if err != nil {
-		return nil, err
+	switch coin {
+	case cryptopay.BTC:
+		unspentTX, err := unspender.Unspent(cx, from)
+		if err != nil {
+			return nil, err
+		}
+		return cryptopay.MakeTransactionBTC(priv.Base58(), to, amount, fee, unspentTX[from])
+	case cryptopay.ETH:
+		nonceMap, err := unspender.CountTransactions(cx, from)
+		if err != nil {
+			return nil, err
+		}
+		nonce, ok := nonceMap[to]
+		if !ok {
+			return nil, errors.New("Unspender failed to return a nonce")
+		}
+		// https://github.com/ethereum/wiki/wiki/Design-Rationale#gas-and-fees
+		const gasLimit uint64 = 21000
+		// https://ethgasstation.info/
+		const gasPrice uint64 = 51 // 51 GWEI
+		return cryptopay.MakeTransactionETH(priv, from, to, nonce, amount, gasLimit, gasPrice)
 	}
-	return cryptopay.MakeTransactionBTC(priv.Base58(), to, amount, fee, unspentTX[from])
+	return nil, errors.New("unsupported coin " + coin.String())
 }

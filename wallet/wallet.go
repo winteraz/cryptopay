@@ -9,6 +9,7 @@ import (
 type Unspender interface {
 	HasTransactions(cx context.Context, addr ...string) (map[string]bool, error)
 	Unspent(cx context.Context, addr ...string) (map[string][]cryptopay.Unspent, error)
+	CountTransactions(cx context.Context, addr ...string) (map[string]uint64, error)
 }
 
 // from hardened public key(m/44/coin/account). This wallet is unable to sign transactions.

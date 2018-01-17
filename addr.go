@@ -1,6 +1,7 @@
 package cryptopay
 
 import (
+	"crypto/ecdsa"
 	"encoding/hex"
 	"fmt"
 	"github.com/bartekn/go-bip39"
@@ -235,6 +236,14 @@ func (k *Key) privateETH() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(crypto.FromECDSA(priv.ToECDSA())), nil
+}
+
+func (k *Key) ToECDSAPrivate() (*ecdsa.PrivateKey, error) {
+	priv, err := (*hdkeychain.ExtendedKey)(k).ECPrivKey()
+	if err != nil {
+		return nil, err
+	}
+	return priv.ToECDSA(), nil
 }
 
 // EIP55
