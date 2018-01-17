@@ -29,11 +29,16 @@ func main() {
 
 	move := flag.Bool("move", false, "move the wallet to a new address")
 	toAddr := flag.String("toAddr", "", "the address to send the wallet to")
-	flag.Parse()
 
+	balance := flag.Bool("balance", false, "get the balance")
+	xpub := flag.String("xpub", "", "xpub to get the balance from")
+
+	flag.Parse()
 	trimString(mnemonicIn, pass)
 
 	switch {
+	case *balance:
+		balanceFN(cryptopay.CoinType(*coin), *xpub)
 	case *move:
 		moveWallet(*mnemonicIn, *pass, cryptopay.CoinType(*coin), *toAddr)
 	case *genAddr:
@@ -47,13 +52,15 @@ func generateAddr(mnemonic, pass string, accts, depth uint32, coin cryptopay.Coi
 	if mnemonic == "" {
 		log.Fatalf("Invalid mnemonic")
 	}
-	w, err := wallet.FromMnemonic(mnemonic, pass, blockchain.New(http.DefaultClient))
-	if err != nil {
-		log.Fatal(err)
-	}
 	var sa []string
+	kind := false // external address type/kind
 	for acct := uint32(0); acct <= accts; acct++ {
-		addra, err := w.Addresses(nil, acct, depth, cryptopay.BTC)
+		w, err := wallet.FromMnemonic(mnemonic, pass, blockchain.New(http.DefaultClient), coin, acct)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		addra, err := w.Addresses(nil, kind, depth)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -85,15 +92,16 @@ func generate(mnemonicIn, pass *string) {
 	account := uint32(0)
 	index := uint32(0)
 	for _, coin := range coins {
-		childPrivate, err := priv.PrivateKey(coin, account, index)
+		childPrivate, err := priv.PrivateKey(coin, account, false, index)
 		if err != nil {
 			log.Fatal(err)
 		}
-		extendedPub, err := priv.DeriveExtendedKey(false, coin, account)
+		extendedAccountPub, err := priv.DeriveExtendedAccountKey(false, coin, account)
 		if err != nil {
 			log.Fatal(err)
 		}
-		childPublic, err := extendedPub.DerivePublicAddr(coin, index)
+		change := false // external
+		childPublic, err := extendedAccountPub.DeriveExtendedAddr(coin, change, index)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -105,27 +113,64 @@ func generate(mnemonicIn, pass *string) {
 		fmt.Printf("%s\n", coin.String())
 		fmt.Printf("masterKey(coin native format)  %q\n", rootKey)
 		fmt.Printf("masterKey(bip-32/base58 formt)  %q\n", priv.Base58())
-		fmt.Printf("BIP32 Extended Public Key %q\n", extendedPub.Base58())
-		fmt.Printf("first child private %q\n", childPrivate)
-		fmt.Printf("first child address %q\n\n", childPublic)
+		fmt.Printf("BIP32 Account Extended Public Key %q\n", extendedAccountPub.Base58())
+		fmt.Printf("first child External private %q\n", childPrivate)
+		fmt.Printf("first child External address %q\n\n", childPublic)
 	}
 
 }
 
-func moveWallet(mnemonic, pass string, coin cryptopay.CoinType, toAddr string) {
+func moveWallet(mnemonic, pass string, coin cryptopay.CoinType, toAddrPub string) {
 	if mnemonic == "" {
 		log.Fatalf("Invalid mnemonic")
 	}
-	w, err := wallet.FromMnemonic(mnemonic, pass, blockchain.New(http.DefaultClient))
-	if err != nil {
-		log.Fatal(err)
-	}
 	const accountsGap, addressGap = uint32(4), uint32(20)
-	txa, err := w.Move(nil, map[cryptopay.CoinType]string{coin: toAddr}, accountsGap, addressGap)
+	txaa := make(map[uint32][][]byte)
+	for account := uint32(0); account <= accountsGap; account++ {
+		w, err := wallet.FromMnemonic(mnemonic, pass, blockchain.New(http.DefaultClient), coin, account)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		txa, err := w.Move(nil, toAddrPub, addressGap)
+		if err != nil {
+			log.Fatal(err)
+		}
+		txaa[account] = txa
+	}
+	for account, txa := range txaa {
+		for _, tx := range txa {
+			fmt.Printf("%s: account %v TX  %s", coin, account, tx)
+		}
+	}
+}
+
+func balanceFN(coin cryptopay.CoinType, xpub string) {
+	w, err := wallet.FromPublic(xpub, coin, blockchain.New(http.DefaultClient))
 	if err != nil {
 		log.Fatal(err)
 	}
-	for coin, tx := range txa {
-		fmt.Printf("%s: %s", coin, tx)
+	const addressGap = uint32(20)
+	kind := false
+	amountM, err := w.Balance(nil, kind, addressGap)
+	if err != nil {
+		log.Fatal(err)
 	}
+	var amount uint64
+	for _, v := range amountM {
+		amount += v
+	}
+
+	kind = true
+	amountInternalM, err := w.Balance(nil, kind, addressGap)
+	if err != nil {
+		log.Fatal(err)
+	}
+	var amountInternal uint64
+	for _, v := range amountInternalM {
+		amountInternal += v
+	}
+
+	fmt.Printf("Amount external: %v\nAccount Internal %v\nTotalBalance %v\n\nAmountMap %q\n\nAmountInternalMap %q",
+		amount, amountInternal, (amount + amountInternal), amountM, amountInternalM)
 }

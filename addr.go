@@ -83,8 +83,12 @@ func (k *Key) RootPublicEIP55() (string, error) {
 }
 
 // creates the Wallet Import Format string encoding of a WIF structure.
-func (k *Key) WIF(coinTyp CoinType, account, index uint32) (string, error) {
-	acctXExternalX, err := k.deriveKey(true, coinTyp, account, index)
+func (k *Key) WIF(coinTyp CoinType, account uint32, internal bool, index uint32) (string, error) {
+	acctX, err := k.DeriveExtendedAccountKey(true, coinTyp, account)
+	if err != nil {
+		return "", err
+	}
+	acctXExternalX, err := (*Key)(acctX).DeriveExtendedKey(internal, index)
 	if err != nil {
 		return "", err
 	}
@@ -116,7 +120,7 @@ const (
 // derives a bip-44 hardened key derived up to the account level(purpose/coint type/account)
 // The public key may be used securely in non trusted environments to generate
 // addresses for the given coin/account.
-func (k *Key) DeriveExtendedKey(private bool, coinTyp CoinType, account uint32) (*Key, error) {
+func (k *Key) DeriveExtendedAccountKey(private bool, coinTyp CoinType, account uint32) (*Key, error) {
 	// m/49'
 	purpose, err := (*hdkeychain.ExtendedKey)(k).Child(44 + hdkeychain.HardenedKeyStart)
 	if err != nil {
@@ -134,55 +138,55 @@ func (k *Key) DeriveExtendedKey(private bool, coinTyp CoinType, account uint32) 
 	if err != nil {
 		return nil, err
 	}
-	// Derive the extended key for the account 0 external chain.  This
-	// gives the path:
-	//   m/0H/0
-	// 0 is external, 1 is internal address (used for change, wallet software)
-	// https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
-	acctXExt, err := acctX.Child(0)
-	if err != nil {
-		return nil, err
-	}
+
 	if private {
-		return (*Key)(acctXExt), nil
+		return (*Key)(acctX), nil
 	}
-	acctXExternalPub, err := acctXExt.Neuter()
+	acctXExternalPub, err := acctX.Neuter()
 	if err != nil {
 		return nil, err
 	}
 	return (*Key)(acctXExternalPub), nil
 }
 
-func (k *Key) deriveKey(private bool, coinTyp CoinType, account, index uint32) (*Key, error) {
-	acctXExternal, err := k.DeriveExtendedKey(private, coinTyp, account)
-	if err != nil {
-		return nil, err
-	}
-	// Derive the Indexth extended key for the account X external chain.
-	// m/44'/0'/0'/0
-	acctXExternalX, err := (*hdkeychain.ExtendedKey)(acctXExternal).Child(index)
-	if err != nil {
-		return nil, err
-	}
-	return (*Key)(acctXExternalX), nil
-}
-
-// k must be a hardened public key/Neuster
-func (k *Key) DerivePublicAddr(coinTyp CoinType, index uint32) (string, error) {
-	acctXExternalX, err := (*hdkeychain.ExtendedKey)(k).Child(index)
+func (k *Key) DeriveExtendedAddr(coinTyp CoinType, internal bool, index uint32) (string, error) {
+	acct, err := k.DeriveExtendedKey(internal, index)
 	if err != nil {
 		return "", err
 	}
-	return (*Key)(acctXExternalX).PayAddress(coinTyp)
+	return (*Key)(acct).PayAddress(coinTyp)
 }
 
-func (k *Key) PublicAddr(coinTyp CoinType, account, index uint32) (string, error) {
-	acctXExternalX, err := k.deriveKey(false, coinTyp, account, index)
+func (k *Key) DeriveExtendedKey(internal bool, index uint32) (*Key, error) {
+	// 0 is external, 1 is internal address (used for change, wallet software)
+	// https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
+	var kind uint32
+	if internal {
+		kind = 1
+	} else {
+		kind = 0
+	}
+	acctXKindX, err := (*hdkeychain.ExtendedKey)(k).Child(kind)
 	if err != nil {
-		log.Error(err)
+		return nil, err
+	}
+	acctXKindXAddrX, err := (*hdkeychain.ExtendedKey)(acctXKindX).Child(index)
+	if err != nil {
+		return nil, err
+	}
+	return (*Key)(acctXKindXAddrX), nil
+}
+
+func (k *Key) PublicAddr(coinTyp CoinType, account uint32, internal bool, index uint32) (string, error) {
+	acctX, err := k.DeriveExtendedAccountKey(false, coinTyp, account)
+	if err != nil {
 		return "", err
 	}
-	return (*Key)(acctXExternalX).PayAddress(coinTyp)
+	addrK, err := (*Key)(acctX).DeriveExtendedKey(internal, index)
+	if err != nil {
+		return "", err
+	}
+	return addrK.PayAddress(coinTyp)
 }
 
 func (k *Key) PayAddress(coinTyp CoinType) (string, error) {
@@ -196,10 +200,13 @@ func (k *Key) PayAddress(coinTyp CoinType) (string, error) {
 
 }
 
-func (k Key) PrivateKey(coinTyp CoinType, account, index uint32) (string, error) {
-	acctXExternalX, err := k.deriveKey(true, coinTyp, account, index)
+func (k Key) PrivateKey(coinTyp CoinType, account uint32, internal bool, index uint32) (string, error) {
+	acctX, err := k.DeriveExtendedAccountKey(true, coinTyp, account)
 	if err != nil {
-		log.Error(err)
+		return "", err
+	}
+	acctXExternalX, err := (*Key)(acctX).DeriveExtendedKey(internal, index)
+	if err != nil {
 		return "", err
 	}
 	switch coinTyp {

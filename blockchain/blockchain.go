@@ -42,15 +42,13 @@ func (o *Output) ToUnspent() cryptopay.Unspent {
 }
 
 type Unspent struct {
-	UnspentOutputs []Output `json:"unspent_output"`
+	UnspentOutputs []Output `json:"unspent_outputs"`
 }
 
 // Implement wallet.Unspender. It supports bitcoin only
 // receives xpub
-func (c *Client) Unspent(cx context.Context, coin cryptopay.CoinType, addr ...string) (map[string][]cryptopay.Unspent, error) {
-	if coin != cryptopay.BTC {
-		return nil, errors.New("Only bitcoin is supported")
-	}
+func (c *Client) Unspent(cx context.Context, addr ...string) (map[string][]cryptopay.Unspent, error) {
+
 	m := make(map[string][]cryptopay.Unspent)
 	for _, address := range addr {
 		URL := "https://blockchain.info/unspent?active=" + address
@@ -106,10 +104,8 @@ type Transaction struct {
 	TXID string `json:"txid"`
 }
 
-func (c *Client) HasTransactions(cx context.Context, coin cryptopay.CoinType, addr ...string) (map[string]bool, error) {
-	if coin != cryptopay.BTC {
-		return nil, errors.New("Only bitcoin is supported")
-	}
+func (c *Client) HasTransactions(cx context.Context, addr ...string) (map[string]bool, error) {
+
 	m := make(map[string]bool)
 	for _, address := range addr {
 		URL := "https://blockchain.info/rawaddr/" + address
