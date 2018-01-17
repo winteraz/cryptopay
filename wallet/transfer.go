@@ -23,14 +23,22 @@ func (w *wallet) MakeTransaction(cx context.Context, from, to string, coin crypt
 	// find the private key for "From"
 	for acct := uint32(0); acct <= accounts; acct++ {
 		for dep := uint32(0); dep <= depth; dep++ {
-			pub, err := w.priv.PublicAddr(coin, acct, dep)
+			var kind = false
+			pub, err := w.priv.PublicAddr(coin, acct, kind, dep)
 			if err != nil {
 				return nil, err
 			}
 			if pub != from {
-				continue
+				kind = true
+				pub, err := w.priv.PublicAddr(coin, acct, kind, dep)
+				if err != nil {
+					return nil, err
+				}
+				if pub != from {
+					continue
+				}
 			}
-			priv, err = w.priv.PrivateKey(coin, acct, dep)
+			priv, err = w.priv.PrivateKey(coin, acct, kind, dep)
 			if err != nil {
 				return nil, err
 			}
@@ -61,10 +69,11 @@ type KeyIndex struct {
 func (w *wallet) DiscoverUsedIndex(cx context.Context, accountsGap, addressGap uint32, coin cryptopay.CoinType) ([]KeyIndex, error) {
 	var mp []KeyIndex
 	var acct, acctIndex uint32
+	const kind = false
 	for acct = 0; acct <= accountsGap; acct++ {
 		var addrDepth, depth uint32
 		for addrDepth = 0; addrDepth <= addressGap; addrDepth++ {
-			pub, err := w.priv.PublicAddr(coin, acctIndex, depth)
+			pub, err := w.priv.PublicAddr(coin, acctIndex, kind, depth)
 			if err != nil {
 				return nil, err
 			}
@@ -87,13 +96,15 @@ func (w *wallet) DiscoverUsedIndex(cx context.Context, accountsGap, addressGap u
 	return mp, nil
 }
 
+// returns a fresh external address
 func (w *wallet) freshAddress(cx context.Context, coin cryptopay.CoinType, exPub string) (string, error) {
 	k, err := cryptopay.ParseKey(exPub)
 	if err != nil {
 		return "", err
 	}
+	const kind = false
 	for i := uint32(0); i < 9999999; i++ {
-		addr, err := k.DerivePublicAddr(coin, i)
+		addr, err := k.DerivePublicAddr(coin, kind, i)
 		if err != nil {
 			return "", err
 		}
@@ -101,7 +112,7 @@ func (w *wallet) freshAddress(cx context.Context, coin cryptopay.CoinType, exPub
 		if err != nil {
 			return "", err
 		}
-		if ok[addr] {
+		if !ok[addr] {
 			return addr, nil
 		}
 	}
@@ -123,17 +134,6 @@ func (w *wallet) Move(cx context.Context, to map[cryptopay.CoinType]string, acco
 			return nil, err
 		}
 		for _, index := range addraIndex {
-			pub, err := w.priv.PublicAddr(coin, index.Account, index.Address)
-			if err != nil {
-				return nil, err
-			}
-			amount, err := w.BalanceByAddress(cx, coin, pub)
-			if err != nil {
-				return nil, err
-			}
-			if amount < 1 {
-				continue
-			}
 			var toAddr string
 			if unusedAddr != "" {
 				toAddr = unusedAddr
@@ -143,33 +143,66 @@ func (w *wallet) Move(cx context.Context, to map[cryptopay.CoinType]string, acco
 					return nil, err
 				}
 			}
-			priv, err := w.priv.PrivateKey(coin, index.Account, index.Address)
+			kind := false
+			b, err := w.withdrawAddress(cx, toAddr, coin, kind, index)
 			if err != nil {
 				return nil, err
 			}
-			// Set an abritrary
-			fee := uint64(1000)
-			b, err := makeTransaction(cx, w.unspender, priv, pub, toAddr, coin, amount, fee)
+			if b != nil {
+				mp[coin] = append(mp[coin], b)
+				unusedAddr = ""
+			}
+			kind = true
+			b, err = w.withdrawAddress(cx, toAddr, coin, kind, index)
 			if err != nil {
 				return nil, err
 			}
-			fee, err = cryptopay.EstimateFee(coin, b)
-			if err != nil {
-				return nil, err
-			}
-			amount = amount - fee
-			if amount < 1 {
+			if b == nil {
 				continue
 			}
-			b, err = makeTransaction(cx, w.unspender, priv, pub, toAddr, coin, amount, fee)
-			if err != nil {
-				return nil, err
-			}
-			unusedAddr = ""
 			mp[coin] = append(mp[coin], b)
+			unusedAddr = ""
 		}
 	}
 	return mp, nil
+}
+
+func (w *wallet) withdrawAddress(cx context.Context, toAddr string, coin cryptopay.CoinType, kind bool, index KeyIndex) ([]byte, error) {
+	pub, err := w.priv.PublicAddr(coin, index.Account, kind, index.Address)
+	if err != nil {
+		return nil, err
+	}
+	amount, err := w.BalanceByAddress(cx, coin, pub)
+	if err != nil {
+		return nil, err
+	}
+	if amount < 1 {
+		return nil, nil
+	}
+
+	priv, err := w.priv.PrivateKey(coin, index.Account, kind, index.Address)
+	if err != nil {
+		return nil, err
+	}
+	// Set an abritrary
+	fee := uint64(1000)
+	b, err := makeTransaction(cx, w.unspender, priv, pub, toAddr, coin, amount, fee)
+	if err != nil {
+		return nil, err
+	}
+	fee, err = cryptopay.EstimateFee(coin, b)
+	if err != nil {
+		return nil, err
+	}
+	if amount < (fee + 1) {
+		return nil, nil
+	}
+	amount = amount - fee
+	b, err = makeTransaction(cx, w.unspender, priv, pub, toAddr, coin, amount, fee)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
 }
 
 func makeTransaction(cx context.Context, unspender Unspender, priv, from, to string, coin cryptopay.CoinType, amount, fee uint64) ([]byte, error) {

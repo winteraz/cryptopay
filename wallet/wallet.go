@@ -50,10 +50,10 @@ type Transaction struct {
 }
 
 type Wallet interface {
-	Addresses(cx context.Context, account, limit uint32, coin cryptopay.CoinType) ([]string, error)
+	Addresses(cx context.Context, account uint32, kind bool, limit uint32, coin cryptopay.CoinType) ([]string, error)
 	// depth How many addresses we should generate
 	// returns map[address]balance.
-	Balance(cx context.Context, account, depth uint32, coin ...cryptopay.CoinType) (map[cryptopay.CoinType]map[string]uint64, error)
+	Balance(cx context.Context, account uint32, kind bool, depth uint32, coin ...cryptopay.CoinType) (map[cryptopay.CoinType]map[string]uint64, error)
 	BalanceByAddress(cx context.Context, coin cryptopay.CoinType, address string) (uint64, error)
 	MakeTransaction(cx context.Context, from, to string, typ cryptopay.CoinType, amount, fee uint64, acctDepth, addrDepth uint32) ([]byte, error)
 	Move(cx context.Context, to map[cryptopay.CoinType]string, accountsGap, addressGap uint32) (map[cryptopay.CoinType][][]byte, error)
@@ -67,13 +67,13 @@ type wallet struct {
 	pub map[cryptopay.CoinType]map[uint32]*cryptopay.Key
 }
 
-func (w *wallet) Addresses(cx context.Context, account, limit uint32, coin cryptopay.CoinType) ([]string, error) {
+func (w *wallet) Addresses(cx context.Context, account uint32, kind bool, limit uint32, coin cryptopay.CoinType) ([]string, error) {
 	var sa []string
 	for index := uint32(0); index <= limit; index++ {
 		// generate addresses
 		// if we have a private key we can generate them directly for any coin
 		if w.priv != nil {
-			childPublic, err := w.priv.PublicAddr(coin, account, index)
+			childPublic, err := w.priv.PublicAddr(coin, account, kind, index)
 			if err != nil {
 				return nil, err
 			}
@@ -90,7 +90,7 @@ func (w *wallet) Addresses(cx context.Context, account, limit uint32, coin crypt
 		if k == nil {
 			return nil, errors.New("we have no public key for the given coin and account index")
 		}
-		childPublic, err := k.DerivePublicAddr(coin, index)
+		childPublic, err := k.DerivePublicAddr(coin, kind, index)
 		if err != nil {
 			return nil, err
 		}
@@ -99,12 +99,12 @@ func (w *wallet) Addresses(cx context.Context, account, limit uint32, coin crypt
 	return sa, nil
 }
 
-func (w *wallet) Balance(cx context.Context, account, depth uint32, coins ...cryptopay.CoinType) (map[cryptopay.CoinType]map[string]uint64, error) {
+func (w *wallet) Balance(cx context.Context, account uint32, kind bool, depth uint32, coins ...cryptopay.CoinType) (map[cryptopay.CoinType]map[string]uint64, error) {
 	out := make(map[string]uint64)
 	cm := make(map[cryptopay.CoinType]map[string]uint64)
 	for _, coin := range coins {
 		// generate addresses
-		addra, err := w.Addresses(cx, account, depth, coin)
+		addra, err := w.Addresses(cx, account, kind, depth, coin)
 		if err != nil {
 			return nil, err
 		}
