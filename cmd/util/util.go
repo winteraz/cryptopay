@@ -62,8 +62,8 @@ func (r *Request) PublicWallet(cx context.Context, ethEndpointHost string) (wall
 }
 
 // returns map[coin]map[accountIndex][]transactionRaw
-func (r *Request) MoveWallet(cx context.Context, ethEndpointHost string, toAddrPub string, accountGap, addressGap uint32) (map[uint32][][]byte, error) {
-	txaa := make(map[uint32][][]byte)
+func (r *Request) MoveWallet(cx context.Context, ethEndpointHost string, toAddrPub string, accountGap, addressGap uint32) (map[uint32][]string, error) {
+	txaa := make(map[uint32][]string)
 	for account := uint32(0); account <= accountGap; account++ {
 		w, err := r.WalletAccount(cx, ethEndpointHost, account)
 		if err != nil {

@@ -58,8 +58,8 @@ type Wallet interface {
 	// returns map[address]balance.
 	Balance(cx context.Context, kind bool, depth uint32) (map[string]uint64, error)
 	BalanceByAddress(cx context.Context, address string) (uint64, error)
-	MakeTransaction(cx context.Context, from, to string, amount, fee uint64, addrDepth uint32) ([]byte, error)
-	Move(cx context.Context, to string, addressGap uint32) ([][]byte, error)
+	//	MakeTransaction(cx context.Context, from, to string, amount, fee uint64, addrDepth uint32) ([]byte, error)
+	Move(cx context.Context, to string, addressGap uint32) ([]string, error)
 	Transactions(cx context.Context, depth uint32) ([]Transaction, error)
 }
 

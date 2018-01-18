@@ -130,7 +130,7 @@ func generate(mnemonicIn, pass *string) {
 
 }
 
-func moveWallet(req *util.Request, ethEndpointHost,  toAddrPub string, accountsGap, addressGap uint32) {
+func moveWallet(req *util.Request, ethEndpointHost, toAddrPub string, accountsGap, addressGap uint32) {
 	txaa, err := req.MoveWallet(nil, ethEndpointHost, toAddrPub, accountsGap, addressGap)
 	if err != nil {
 		log.Fatal(err)
@@ -143,15 +143,12 @@ func moveWallet(req *util.Request, ethEndpointHost,  toAddrPub string, accountsG
 }
 
 func balanceFN(req *util.Request, ethEndpointHost string, accountsGap, addressGap uint32) {
-	var accountInternal = make(map[uint32]map[string]uint64)
-	var accountExternal = make(map[uint32]map[string]uint64)
- 	balance, err := req.Balance(nil, ethEndpointHost, accountsGap, addressGap)
-	if err != nil{
+
+	balance, err := req.Balance(nil, ethEndpointHost, accountsGap, addressGap)
+	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf(" TotalBalance %v\n\nAmountMap %q\n\nAmountInternalMap %q",
-		 balance.Total, balance.External, balance.Internal)
+		balance.Total, balance.External, balance.Internal)
 
 }
-
- 

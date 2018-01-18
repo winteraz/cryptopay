@@ -6,6 +6,9 @@ import (
 	"github.com/winteraz/cryptopay"
 )
 
+/*
+
+
 // This actually works only for bitcoin at this time.
 // depth - level to lookup for addresses into wallet down the chain.
 // accounts - number of accounts to look into for the "from" address.
@@ -61,6 +64,8 @@ func (w *wallet) MakeTransaction(cx context.Context, from, to string, amount, fe
 	return cryptopay.MakeTransactionBTC(priv, to, amount, fee, unspentTX[from])
 }
 
+*/
+
 func (w *wallet) DiscoverUsedIndex(cx context.Context, addressGap uint32) ([]uint32, error) {
 	var mp []uint32
 	const kind = false
@@ -112,9 +117,9 @@ func (w *wallet) freshAddress(cx context.Context, exPub string) (string, error) 
 
 // Move the wallet to a different provider/address
 // toPub - extended public keys where the payments are being transfered.
-func (w *wallet) Move(cx context.Context, toPub string, addressGap uint32) ([][]byte, error) {
+func (w *wallet) Move(cx context.Context, toPub string, addressGap uint32) ([]string, error) {
 	// The limits are reset after each positive result.
-	var mp [][]byte
+	var mp []string
 	var unusedAddr string
 	// find index of toPub
 	addraIndex, err := w.DiscoverUsedIndex(cx, addressGap)
@@ -136,7 +141,7 @@ func (w *wallet) Move(cx context.Context, toPub string, addressGap uint32) ([][]
 		if err != nil {
 			return nil, err
 		}
-		if b != nil {
+		if b != "" {
 			mp = append(mp, b)
 			unusedAddr = ""
 		}
@@ -145,7 +150,7 @@ func (w *wallet) Move(cx context.Context, toPub string, addressGap uint32) ([][]
 		if err != nil {
 			return nil, err
 		}
-		if b == nil {
+		if b == "" {
 			continue
 		}
 		mp = append(mp, b)
@@ -154,42 +159,42 @@ func (w *wallet) Move(cx context.Context, toPub string, addressGap uint32) ([][]
 	return mp, nil
 }
 
-func (w *wallet) withdrawAddress(cx context.Context, toAddr string, kind bool, index uint32) ([]byte, error) {
+func (w *wallet) withdrawAddress(cx context.Context, toAddr string, kind bool, index uint32) (string, error) {
 	pub, err := w.pub.DeriveExtendedAddr(w.coin, kind, index)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	amount, err := w.BalanceByAddress(cx, pub)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	if amount < 1 {
-		return nil, nil
+		return "", nil
 	}
 
 	priv, err := w.priv.DeriveExtendedKey(kind, index)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	// Set an abritrary
 	fee := uint64(1000)
 	b, err := makeTransaction(cx, w.unspender, priv, pub, toAddr, w.coin, amount, fee)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	fee, err = cryptopay.EstimateFee(w.coin, b)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	if amount < (fee + 1) {
-		return nil, nil
+		return "", nil
 	}
 	amount = amount - fee
 	b, err = makeTransaction(cx, w.unspender, priv, pub, toAddr, w.coin, amount, fee)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	return b, nil
+	return cryptopay.EncodeRawTX(w.coin, b), nil
 }
 
 func makeTransaction(cx context.Context, unspender Unspender, priv *cryptopay.Key, from, to string, coin cryptopay.CoinType, amount, fee uint64) ([]byte, error) {
@@ -209,11 +214,10 @@ func makeTransaction(cx context.Context, unspender Unspender, priv *cryptopay.Ke
 		if !ok {
 			return nil, errors.New("Unspender failed to return a nonce")
 		}
-		// https://github.com/ethereum/wiki/wiki/Design-Rationale#gas-and-fees
-		const gasLimit uint64 = 21000
-		// https://ethgasstation.info/
-		const gasPrice uint64 = 51 // 51 GWEI
-		return cryptopay.MakeTransactionETH(priv, from, to, nonce, amount, gasLimit, gasPrice)
+
+		return cryptopay.MakeTransactionETH(priv, from, to, nonce, amount,
+			cryptopay.GasLimit,
+			cryptopay.GasPrice)
 	}
 	return nil, errors.New("unsupported coin " + coin.String())
 }
