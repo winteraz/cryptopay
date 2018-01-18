@@ -6,6 +6,7 @@ import (
 	log "github.com/golang/glog"
 	"github.com/winteraz/cryptopay"
 	"github.com/winteraz/cryptopay/blockchain"
+	"github.com/winteraz/cryptopay/ethrpc"
 	"github.com/winteraz/cryptopay/wallet"
 	"net/http"
 	"strings"
@@ -33,29 +34,44 @@ func main() {
 	balance := flag.Bool("balance", false, "get the balance")
 	xpub := flag.String("xpub", "", "xpub to get the balance from")
 
+	ethEndpointHost := flag.String("ethHost", "", "the hostname of the ETH endpoint RPC")
 	flag.Parse()
 	trimString(mnemonicIn, pass)
 
 	switch {
 	case *balance:
-		balanceFN(cryptopay.CoinType(*coin), *xpub)
+		balanceFN(*ethEndpointHost, cryptopay.CoinType(*coin), *xpub)
 	case *move:
-		moveWallet(*mnemonicIn, *pass, cryptopay.CoinType(*coin), *toAddr)
+		moveWallet(*ethEndpointHost, *mnemonicIn, *pass, cryptopay.CoinType(*coin), *toAddr)
 	case *genAddr:
-		generateAddr(*mnemonicIn, *pass, uint32(*accts), uint32(*depth), cryptopay.CoinType(*coin))
+		generateAddr(*ethEndpointHost, *mnemonicIn, *pass, uint32(*accts), uint32(*depth), cryptopay.CoinType(*coin))
 	default:
 		generate(mnemonicIn, pass)
 	}
 }
 
-func generateAddr(mnemonic, pass string, accts, depth uint32, coin cryptopay.CoinType) {
+func generateAddr(ethEndpointHost, mnemonic, pass string, accts, depth uint32, coin cryptopay.CoinType) {
 	if mnemonic == "" {
 		log.Fatalf("Invalid mnemonic")
+	}
+	var unspender wallet.Unspender
+	switch coin {
+	case cryptopay.BTC:
+		unspender = blockchain.New(http.DefaultClient)
+	case cryptopay.ETH:
+		if ethEndpointHost == "" {
+			log.Fatalf("Invalid ethEndpointHost")
+			return
+		}
+		ethEndpoint := "https://" + ethEndpointHost + ":8545"
+		unspender = ethrpc.New(ethEndpoint, http.DefaultClient)
+	default:
+		panic("Invalid coin")
 	}
 	var sa []string
 	kind := false // external address type/kind
 	for acct := uint32(0); acct <= accts; acct++ {
-		w, err := wallet.FromMnemonic(mnemonic, pass, blockchain.New(http.DefaultClient), coin, acct)
+		w, err := wallet.FromMnemonic(mnemonic, pass, unspender, coin, acct)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -120,14 +136,28 @@ func generate(mnemonicIn, pass *string) {
 
 }
 
-func moveWallet(mnemonic, pass string, coin cryptopay.CoinType, toAddrPub string) {
+func moveWallet(ethEndpointHost, mnemonic, pass string, coin cryptopay.CoinType, toAddrPub string) {
 	if mnemonic == "" {
 		log.Fatalf("Invalid mnemonic")
+	}
+	var unspender wallet.Unspender
+	switch coin {
+	case cryptopay.BTC:
+		unspender = blockchain.New(http.DefaultClient)
+	case cryptopay.ETH:
+		if ethEndpointHost == "" {
+			log.Fatalf("Invalid ethEndpointHost")
+			return
+		}
+		ethEndpoint := "https://" + ethEndpointHost + ":8545"
+		unspender = ethrpc.New(ethEndpoint, http.DefaultClient)
+	default:
+		panic("Invalid coin")
 	}
 	const accountsGap, addressGap = uint32(4), uint32(20)
 	txaa := make(map[uint32][][]byte)
 	for account := uint32(0); account <= accountsGap; account++ {
-		w, err := wallet.FromMnemonic(mnemonic, pass, blockchain.New(http.DefaultClient), coin, account)
+		w, err := wallet.FromMnemonic(mnemonic, pass, unspender, coin, account)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -145,8 +175,22 @@ func moveWallet(mnemonic, pass string, coin cryptopay.CoinType, toAddrPub string
 	}
 }
 
-func balanceFN(coin cryptopay.CoinType, xpub string) {
-	w, err := wallet.FromPublic(xpub, coin, blockchain.New(http.DefaultClient))
+func balanceFN(ethEndpointHost string, coin cryptopay.CoinType, xpub string) {
+	var unspender wallet.Unspender
+	switch coin {
+	case cryptopay.BTC:
+		unspender = blockchain.New(http.DefaultClient)
+	case cryptopay.ETH:
+		if ethEndpointHost == "" {
+			log.Fatalf("Invalid ethEndpointHost")
+			return
+		}
+		ethEndpoint := "https://" + ethEndpointHost + ":8545"
+		unspender = ethrpc.New(ethEndpoint, http.DefaultClient)
+	default:
+		panic("Invalid coin")
+	}
+	w, err := wallet.FromPublic(xpub, coin, unspender)
 	if err != nil {
 		log.Fatal(err)
 	}

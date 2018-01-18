@@ -48,7 +48,6 @@ type Unspent struct {
 // Implement wallet.Unspender. It supports bitcoin only
 // receives xpub
 func (c *Client) Unspent(cx context.Context, addr ...string) (map[string][]cryptopay.Unspent, error) {
-
 	m := make(map[string][]cryptopay.Unspent)
 	for _, address := range addr {
 		URL := "https://blockchain.info/unspent?active=" + address
@@ -87,6 +86,10 @@ func (c *Client) Unspent(cx context.Context, addr ...string) (map[string][]crypt
 		}
 	}
 	return m, nil
+}
+
+func (c *Client) CountTransactions(cx context.Context, addr ...string) (map[string]uint64, error) {
+	return nil, errors.New("Not implemented")
 }
 
 type Transactions struct {
