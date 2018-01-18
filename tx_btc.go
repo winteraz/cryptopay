@@ -8,7 +8,7 @@ import (
 
 type Unspent struct {
 	Tx            string // hex encoded transaction
-	Index         uint32 // transaction index
+	N             uint32 // transaction index
 	Amount        uint64
 	Confirmations int
 	Script        string
@@ -64,7 +64,7 @@ func ToUTXO(utxos []Unspent, privs string) (tx.UTXOs, error) {
 		txs[i] = &tx.UTXO{
 			Key:     priv,
 			TxHash:  hash,
-			TxIndex: utxo.Index,
+			TxIndex: utxo.N,
 			Script:  script,
 		}
 	}

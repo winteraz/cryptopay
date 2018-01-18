@@ -18,7 +18,7 @@ type Client struct {
 	cl       *http.Client
 }
 
-func New(cl *http.Client, endpoint string) *Client {
+func New(endpoint string, cl *http.Client) *Client {
 	return &Client{cl: cl, endpoint: endpoint}
 }
 
