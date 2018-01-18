@@ -62,9 +62,9 @@ func (r *Request) PublicWallet(cx context.Context, ethEndpointHost string) (wall
 }
 
 // returns map[coin]map[accountIndex][]transactionRaw
-func (r *Request) MoveWallet(cx context.Context, ethEndpointHost string, toAddrPub string, accountsGap, addressGap uint32) (map[uint32][][]byte, error) {
+func (r *Request) MoveWallet(cx context.Context, ethEndpointHost string, toAddrPub string, accountGap, addressGap uint32) (map[uint32][][]byte, error) {
 	txaa := make(map[uint32][][]byte)
-	for account := uint32(0); account <= accountsGap; account++ {
+	for account := uint32(0); account <= accountGap; account++ {
 		w, err := r.WalletAccount(cx, ethEndpointHost, account)
 		if err != nil {
 			return nil, err
@@ -83,58 +83,83 @@ func (r *Request) MoveWallet(cx context.Context, ethEndpointHost string, toAddrP
 	return txaa, nil
 }
 
+type Balance struct {
+	Internal map[uint32]map[string]uint64
+	External map[uint32]map[string]uint64
+	Total    uint64
+}
+
 // if Req doesn't have a private/key mnemonic the accountsGap is ignored(as we can't derivate account
 // keys)
 
-func (r *Request) Balance(cx context.Context, ethEndpointHost string, accountsGap, addressGap uint32) (ext, inter map[uint32]map[string]uint64, err error) {
+func (r *Request) Balance(cx context.Context, ethEndpointHost string, accountsGap, addressGap uint32) (*Balance, error) {
 	if r.Mnemonic == "" {
 		// we use a dummy account b/c we don't know it
 		const account = uint32(99999)
 		w, err := r.PublicWallet(cx, ethEndpointHost)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
-		var inter = make(map[uint32]map[string]uint64)
-		var ext = make(map[uint32]map[string]uint64)
+		bal := &Balance{
+			Internal: make(map[uint32]map[string]uint64),
+			External: make(map[uint32]map[string]uint64),
+		}
 		extAcct, interAcct, err := accountBalance(cx, w, addressGap)
 		if err != nil {
 			log.Error(err)
-			return nil, nil, err
+			return nil, err
 		}
 		if len(extAcct) != 0 {
-			ext[account] = extAcct
+			bal.External[account] = extAcct
 		}
 		if len(interAcct) != 0 {
-			inter[account] = interAcct
+			bal.Internal[account] = interAcct
 		}
-		return inter, ext, nil
+		for _, v := range extAcct {
+			bal.Total += v
+		}
+		for _, v := range interAcct {
+			bal.Total += v
+		}
+
+		return bal, nil
 	}
 	return r.balanceAccounts(cx, ethEndpointHost, accountsGap, addressGap)
 }
 
-func (r *Request) balanceAccounts(cx context.Context, ethEndpointHost string, accountsGap, addressGap uint32) (ext, inter map[uint32]map[string]uint64, err error) {
-	inter = make(map[uint32]map[string]uint64)
-	ext = make(map[uint32]map[string]uint64)
+func (r *Request) balanceAccounts(cx context.Context, ethEndpointHost string, accountsGap, addressGap uint32) (*Balance, error) {
+	bal := &Balance{
+		Internal: make(map[uint32]map[string]uint64),
+		External: make(map[uint32]map[string]uint64),
+	}
+	accountIndex := uint32(0)
 	for account := uint32(0); account <= accountsGap; account++ {
-		w, err := r.WalletAccount(cx, ethEndpointHost, account)
+		w, err := r.WalletAccount(cx, ethEndpointHost, accountIndex)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		extAcct, interAcct, err := accountBalance(cx, w, addressGap)
 		if err != nil {
 			log.Error(err)
-			return nil, nil, err
+			return nil, err
 		}
 		if len(extAcct) != 0 {
-			ext[account] = extAcct
+			bal.External[accountIndex] = extAcct
 			account = 0
 		}
 		if len(interAcct) != 0 {
-			inter[account] = interAcct
+			bal.Internal[accountIndex] = interAcct
 			account = 0
 		}
+		for _, v := range extAcct {
+			bal.Total += v
+		}
+		for _, v := range interAcct {
+			bal.Total += v
+		}
+		accountIndex++
 	}
-	return ext, inter, nil
+	return bal, nil
 
 }
 

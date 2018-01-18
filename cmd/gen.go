@@ -130,7 +130,7 @@ func generate(mnemonicIn, pass *string) {
 
 }
 
-func moveWallet(req *util.Request, ethEndpointHost, toAddrPub string, accountsGap, addressGap uint32) {
+func moveWallet(req *util.Request, ethEndpointHost,  toAddrPub string, accountsGap, addressGap uint32) {
 	txaa, err := req.MoveWallet(nil, ethEndpointHost, toAddrPub, accountsGap, addressGap)
 	if err != nil {
 		log.Fatal(err)
@@ -145,24 +145,13 @@ func moveWallet(req *util.Request, ethEndpointHost, toAddrPub string, accountsGa
 func balanceFN(req *util.Request, ethEndpointHost string, accountsGap, addressGap uint32) {
 	var accountInternal = make(map[uint32]map[string]uint64)
 	var accountExternal = make(map[uint32]map[string]uint64)
-	accountExternal, accountInternal, err := req.Balance(nil, ethEndpointHost, accountsGap, addressGap)
-	if err != nil {
+ 	balance, err := req.Balance(nil, ethEndpointHost, accountsGap, addressGap)
+	if err != nil{
 		log.Fatal(err)
 	}
-
-	var amount, amountInternal uint64
-	for _, m := range accountExternal {
-		for _, v := range m {
-			amount += v
-		}
-	}
-	for _, m := range accountInternal {
-		for _, v := range m {
-			amountInternal += v
-		}
-	}
-
-	fmt.Printf("Amount external: %v\nAccount Internal %v\nTotalBalance %v\n\nAmountMap %q\n\nAmountInternalMap %q",
-		amount, amountInternal, (amount + amountInternal), accountExternal, accountInternal)
+	fmt.Printf(" TotalBalance %v\n\nAmountMap %q\n\nAmountInternalMap %q",
+		 balance.Total, balance.External, balance.Internal)
 
 }
+
+ 
