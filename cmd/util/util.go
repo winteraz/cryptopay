@@ -59,11 +59,12 @@ func (r *Request) PublicWallet(cx context.Context, remoteHost string) (wallet.Wa
 	return wallet.FromPublic(r.ExtendedPublic, r.Coin, unspender)
 }
 
-// returns map[coin]map[accountIndex][]transactionRaw
+// returns  map[accountIndex][]transactionRaw
 func (r *Request) MoveWallet(cx context.Context, remoteHost string, toAddrPub string, accountGap, addressGap uint32) (map[uint32][]string, error) {
 	txaa := make(map[uint32][]string)
+	accountIndex := uint32(0)
 	for account := uint32(0); account <= accountGap; account++ {
-		w, err := r.WalletAccount(cx, remoteHost, account)
+		w, err := r.WalletAccount(cx, remoteHost, accountIndex)
 		if err != nil {
 			return nil, err
 		}
@@ -73,10 +74,12 @@ func (r *Request) MoveWallet(cx context.Context, remoteHost string, toAddrPub st
 			return nil, err
 		}
 		if len(txa) == 0 {
+			accountIndex++
 			continue
 		}
-		txaa[account] = txa
+		txaa[accountIndex] = txa
 		account = 0
+		accountIndex++
 	}
 	return txaa, nil
 }
