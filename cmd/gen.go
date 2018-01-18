@@ -5,10 +5,7 @@ import (
 	"fmt"
 	log "github.com/golang/glog"
 	"github.com/winteraz/cryptopay"
-	"github.com/winteraz/cryptopay/blockchain"
-	"github.com/winteraz/cryptopay/ethrpc"
-	"github.com/winteraz/cryptopay/wallet"
-	"net/http"
+	"github.com/winteraz/cryptopay/cmd/util"
 	"strings"
 )
 
@@ -24,8 +21,8 @@ func main() {
 	pass := flag.String("pass", "", "password to harden the key generation")
 	mnemonicIn := flag.String("mnemonic", "", "if set it will generate the keys from the mnemonic")
 	genAddr := flag.Bool("addr", false, "if set it will addresses(public and private")
-	depth := flag.Int("depth", 0, "depth of address generation")
-	accts := flag.Int("accts", 1, "number of accounts")
+	depth := flag.Int("depth", 10, "depth of address generation")
+	accts := flag.Int("accts", 10, "number of accounts")
 	coin := flag.Int("coin", 0, "the coin of the wallet, default is 0 (BTC)")
 
 	move := flag.Bool("move", false, "move the wallet to a new address")
@@ -40,38 +37,35 @@ func main() {
 
 	switch {
 	case *balance:
-		balanceFN(*ethEndpointHost, cryptopay.CoinType(*coin), *xpub)
+		req := &util.Request{
+			ExtendedPublic: *xpub,
+			Coin:           cryptopay.CoinType(*coin),
+		}
+		balanceFN(req, *ethEndpointHost, uint32(*accts), uint32(*depth))
 	case *move:
-		moveWallet(*ethEndpointHost, *mnemonicIn, *pass, cryptopay.CoinType(*coin), *toAddr)
+		req := &util.Request{
+			Mnemonic: *mnemonicIn,
+			Passwd:   *pass,
+			Coin:     cryptopay.CoinType(*coin),
+		}
+		moveWallet(req, *ethEndpointHost, *toAddr, uint32(*accts), uint32(*depth))
 	case *genAddr:
-		generateAddr(*ethEndpointHost, *mnemonicIn, *pass, uint32(*accts), uint32(*depth), cryptopay.CoinType(*coin))
+		req := &util.Request{
+			Mnemonic: *mnemonicIn,
+			Passwd:   *pass,
+			Coin:     cryptopay.CoinType(*coin),
+		}
+		generateAddr(req, *ethEndpointHost, uint32(*accts), uint32(*depth))
 	default:
 		generate(mnemonicIn, pass)
 	}
 }
 
-func generateAddr(ethEndpointHost, mnemonic, pass string, accts, depth uint32, coin cryptopay.CoinType) {
-	if mnemonic == "" {
-		log.Fatalf("Invalid mnemonic")
-	}
-	var unspender wallet.Unspender
-	switch coin {
-	case cryptopay.BTC:
-		unspender = blockchain.New(http.DefaultClient)
-	case cryptopay.ETH:
-		if ethEndpointHost == "" {
-			log.Fatalf("Invalid ethEndpointHost")
-			return
-		}
-		ethEndpoint := "https://" + ethEndpointHost + ":8545"
-		unspender = ethrpc.New(ethEndpoint, http.DefaultClient)
-	default:
-		panic("Invalid coin")
-	}
+func generateAddr(req *util.Request, ethEndpointHost string, accts, depth uint32) {
 	var sa []string
 	kind := false // external address type/kind
 	for acct := uint32(0); acct <= accts; acct++ {
-		w, err := wallet.FromMnemonic(mnemonic, pass, unspender, coin, acct)
+		w, err := req.WalletAccount(nil, ethEndpointHost, acct)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -82,7 +76,7 @@ func generateAddr(ethEndpointHost, mnemonic, pass string, accts, depth uint32, c
 		}
 		sa = append(sa, addra...)
 	}
-	fmt.Printf("mnemonic %v\n pass %q, addresses \n %q", mnemonic, pass, sa)
+	fmt.Printf("req %#v\n addresses \n %q", *req, sa)
 }
 
 func generate(mnemonicIn, pass *string) {
@@ -136,85 +130,39 @@ func generate(mnemonicIn, pass *string) {
 
 }
 
-func moveWallet(ethEndpointHost, mnemonic, pass string, coin cryptopay.CoinType, toAddrPub string) {
-	if mnemonic == "" {
-		log.Fatalf("Invalid mnemonic")
-	}
-	var unspender wallet.Unspender
-	switch coin {
-	case cryptopay.BTC:
-		unspender = blockchain.New(http.DefaultClient)
-	case cryptopay.ETH:
-		if ethEndpointHost == "" {
-			log.Fatalf("Invalid ethEndpointHost")
-			return
-		}
-		ethEndpoint := "https://" + ethEndpointHost + ":8545"
-		unspender = ethrpc.New(ethEndpoint, http.DefaultClient)
-	default:
-		panic("Invalid coin")
-	}
-	const accountsGap, addressGap = uint32(4), uint32(20)
-	txaa := make(map[uint32][][]byte)
-	for account := uint32(0); account <= accountsGap; account++ {
-		w, err := wallet.FromMnemonic(mnemonic, pass, unspender, coin, account)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		txa, err := w.Move(nil, toAddrPub, addressGap)
-		if err != nil {
-			log.Fatal(err)
-		}
-		txaa[account] = txa
+func moveWallet(req *util.Request, ethEndpointHost, toAddrPub string, accountsGap, addressGap uint32) {
+	txaa, err := req.MoveWallet(nil, ethEndpointHost, toAddrPub, accountsGap, addressGap)
+	if err != nil {
+		log.Fatal(err)
 	}
 	for account, txa := range txaa {
 		for _, tx := range txa {
-			fmt.Printf("%s: account %v TX  %s", coin, account, tx)
+			fmt.Printf("%s: account %v TX  %s", req.Coin, account, tx)
 		}
 	}
 }
 
-func balanceFN(ethEndpointHost string, coin cryptopay.CoinType, xpub string) {
-	var unspender wallet.Unspender
-	switch coin {
-	case cryptopay.BTC:
-		unspender = blockchain.New(http.DefaultClient)
-	case cryptopay.ETH:
-		if ethEndpointHost == "" {
-			log.Fatalf("Invalid ethEndpointHost")
-			return
-		}
-		ethEndpoint := "https://" + ethEndpointHost + ":8545"
-		unspender = ethrpc.New(ethEndpoint, http.DefaultClient)
-	default:
-		panic("Invalid coin")
-	}
-	w, err := wallet.FromPublic(xpub, coin, unspender)
+func balanceFN(req *util.Request, ethEndpointHost string, accountsGap, addressGap uint32) {
+	var accountInternal = make(map[uint32]map[string]uint64)
+	var accountExternal = make(map[uint32]map[string]uint64)
+	accountExternal, accountInternal, err := req.Balance(nil, ethEndpointHost, accountsGap, addressGap)
 	if err != nil {
 		log.Fatal(err)
-	}
-	const addressGap = uint32(20)
-	kind := false
-	amountM, err := w.Balance(nil, kind, addressGap)
-	if err != nil {
-		log.Fatal(err)
-	}
-	var amount uint64
-	for _, v := range amountM {
-		amount += v
 	}
 
-	kind = true
-	amountInternalM, err := w.Balance(nil, kind, addressGap)
-	if err != nil {
-		log.Fatal(err)
+	var amount, amountInternal uint64
+	for _, m := range accountExternal {
+		for _, v := range m {
+			amount += v
+		}
 	}
-	var amountInternal uint64
-	for _, v := range amountInternalM {
-		amountInternal += v
+	for _, m := range accountInternal {
+		for _, v := range m {
+			amountInternal += v
+		}
 	}
 
 	fmt.Printf("Amount external: %v\nAccount Internal %v\nTotalBalance %v\n\nAmountMap %q\n\nAmountInternalMap %q",
-		amount, amountInternal, (amount + amountInternal), amountM, amountInternalM)
+		amount, amountInternal, (amount + amountInternal), accountExternal, accountInternal)
+
 }
