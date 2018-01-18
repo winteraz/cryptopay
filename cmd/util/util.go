@@ -5,11 +5,27 @@ import (
 	"errors"
 	log "github.com/golang/glog"
 	"github.com/winteraz/cryptopay"
-	"github.com/winteraz/cryptopay/blockchain"
+	"github.com/winteraz/cryptopay/btcrpc"
 	"github.com/winteraz/cryptopay/ethrpc"
 	"github.com/winteraz/cryptopay/wallet"
 	"net/http"
 )
+
+func newUnspender(remoteHost string, coin cryptopay.CoinType) (wallet.Unspender, error) {
+	switch coin {
+	case cryptopay.BTC:
+		endpoint := "https://" + remoteHost + ":3001"
+		return btrpc.New(endpoint, http.DefaultClient), nil
+	case cryptopay.ETH:
+		if remoteHost == "" {
+			return nil, errors.New("Invalid remoteHost")
+		}
+		endpoint := "https://" + remoteHost + ":8545"
+		return ethrpc.New(endpoint, http.DefaultClient), nil
+	}
+	return nil, errors.New("Invalid coin")
+
+}
 
 type Request struct {
 	Mnemonic       string
@@ -19,41 +35,23 @@ type Request struct {
 	Coin           cryptopay.CoinType
 }
 
-func (r *Request) WalletAccount(cx context.Context, ethEndpointHost string, accountIndex uint32) (wallet.Wallet, error) {
+func (r *Request) WalletAccount(cx context.Context, remoteHost string, accountIndex uint32) (wallet.Wallet, error) {
 	if r.Mnemonic == "" {
 		return nil, errors.New("Invalid mnemonic")
 	}
-	var unspender wallet.Unspender
-	switch r.Coin {
-	case cryptopay.BTC:
-		unspender = blockchain.New(http.DefaultClient)
-	case cryptopay.ETH:
-		if ethEndpointHost == "" {
-			return nil, errors.New("Invalid ethEndpointHost")
-		}
-		ethEndpoint := "https://" + ethEndpointHost + ":8545"
-		unspender = ethrpc.New(ethEndpoint, http.DefaultClient)
-	default:
-		return nil, errors.New("Invalid coin")
+	unspender, err := newUnspender(remoteHost, r.Coin)
+	if err != nil {
+		return nil, err
 	}
 	return wallet.FromMnemonic(r.Mnemonic, r.Passwd, unspender, r.Coin, accountIndex)
 
 }
 
-func (r *Request) PublicWallet(cx context.Context, ethEndpointHost string) (wallet.Wallet, error) {
+func (r *Request) PublicWallet(cx context.Context, remoteHost string) (wallet.Wallet, error) {
 
-	var unspender wallet.Unspender
-	switch r.Coin {
-	case cryptopay.BTC:
-		unspender = blockchain.New(http.DefaultClient)
-	case cryptopay.ETH:
-		if ethEndpointHost == "" {
-			return nil, errors.New("Invalid ethEndpointHost")
-		}
-		ethEndpoint := "https://" + ethEndpointHost + ":8545"
-		unspender = ethrpc.New(ethEndpoint, http.DefaultClient)
-	default:
-		return nil, errors.New("Invalid coin")
+	unspender, err := newUnspender(remoteHost, r.Coin)
+	if err != nil {
+		return nil, err
 	}
 	if r.ExtendedPublic == "" {
 		return nil, errors.New("no mnemonic or  ExtendedPublic")
@@ -62,10 +60,10 @@ func (r *Request) PublicWallet(cx context.Context, ethEndpointHost string) (wall
 }
 
 // returns map[coin]map[accountIndex][]transactionRaw
-func (r *Request) MoveWallet(cx context.Context, ethEndpointHost string, toAddrPub string, accountGap, addressGap uint32) (map[uint32][]string, error) {
+func (r *Request) MoveWallet(cx context.Context, remoteHost string, toAddrPub string, accountGap, addressGap uint32) (map[uint32][]string, error) {
 	txaa := make(map[uint32][]string)
 	for account := uint32(0); account <= accountGap; account++ {
-		w, err := r.WalletAccount(cx, ethEndpointHost, account)
+		w, err := r.WalletAccount(cx, remoteHost, account)
 		if err != nil {
 			return nil, err
 		}
@@ -92,11 +90,11 @@ type Balance struct {
 // if Req doesn't have a private/key mnemonic the accountsGap is ignored(as we can't derivate account
 // keys)
 
-func (r *Request) Balance(cx context.Context, ethEndpointHost string, accountsGap, addressGap uint32) (*Balance, error) {
+func (r *Request) Balance(cx context.Context, remoteHost string, accountsGap, addressGap uint32) (*Balance, error) {
 	if r.Mnemonic == "" {
 		// we use a dummy account b/c we don't know it
 		const account = uint32(99999)
-		w, err := r.PublicWallet(cx, ethEndpointHost)
+		w, err := r.PublicWallet(cx, remoteHost)
 		if err != nil {
 			return nil, err
 		}
@@ -124,17 +122,17 @@ func (r *Request) Balance(cx context.Context, ethEndpointHost string, accountsGa
 
 		return bal, nil
 	}
-	return r.balanceAccounts(cx, ethEndpointHost, accountsGap, addressGap)
+	return r.balanceAccounts(cx, remoteHost, accountsGap, addressGap)
 }
 
-func (r *Request) balanceAccounts(cx context.Context, ethEndpointHost string, accountsGap, addressGap uint32) (*Balance, error) {
+func (r *Request) balanceAccounts(cx context.Context, remoteHost string, accountsGap, addressGap uint32) (*Balance, error) {
 	bal := &Balance{
 		Internal: make(map[uint32]map[string]uint64),
 		External: make(map[uint32]map[string]uint64),
 	}
 	accountIndex := uint32(0)
 	for account := uint32(0); account <= accountsGap; account++ {
-		w, err := r.WalletAccount(cx, ethEndpointHost, accountIndex)
+		w, err := r.WalletAccount(cx, remoteHost, accountIndex)
 		if err != nil {
 			return nil, err
 		}

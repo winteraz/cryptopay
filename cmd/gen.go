@@ -31,7 +31,7 @@ func main() {
 	balance := flag.Bool("balance", false, "get the balance")
 	xpub := flag.String("xpub", "", "xpub to get the balance from")
 
-	ethEndpointHost := flag.String("ethHost", "", "the hostname of the ETH endpoint RPC")
+	remoteHost := flag.String("remoteHost", "", "the hostname of the RPC endpoint")
 	flag.Parse()
 	trimString(mnemonicIn, pass)
 
@@ -41,31 +41,31 @@ func main() {
 			ExtendedPublic: *xpub,
 			Coin:           cryptopay.CoinType(*coin),
 		}
-		balanceFN(req, *ethEndpointHost, uint32(*accts), uint32(*depth))
+		balanceFN(req, *remoteHost, uint32(*accts), uint32(*depth))
 	case *move:
 		req := &util.Request{
 			Mnemonic: *mnemonicIn,
 			Passwd:   *pass,
 			Coin:     cryptopay.CoinType(*coin),
 		}
-		moveWallet(req, *ethEndpointHost, *toAddr, uint32(*accts), uint32(*depth))
+		moveWallet(req, *remoteHost, *toAddr, uint32(*accts), uint32(*depth))
 	case *genAddr:
 		req := &util.Request{
 			Mnemonic: *mnemonicIn,
 			Passwd:   *pass,
 			Coin:     cryptopay.CoinType(*coin),
 		}
-		generateAddr(req, *ethEndpointHost, uint32(*accts), uint32(*depth))
+		generateAddr(req, *remoteHost, uint32(*accts), uint32(*depth))
 	default:
 		generate(mnemonicIn, pass)
 	}
 }
 
-func generateAddr(req *util.Request, ethEndpointHost string, accts, depth uint32) {
+func generateAddr(req *util.Request, remoteHost string, accts, depth uint32) {
 	var sa []string
 	kind := false // external address type/kind
 	for acct := uint32(0); acct <= accts; acct++ {
-		w, err := req.WalletAccount(nil, ethEndpointHost, acct)
+		w, err := req.WalletAccount(nil, remoteHost, acct)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -130,8 +130,8 @@ func generate(mnemonicIn, pass *string) {
 
 }
 
-func moveWallet(req *util.Request, ethEndpointHost, toAddrPub string, accountsGap, addressGap uint32) {
-	txaa, err := req.MoveWallet(nil, ethEndpointHost, toAddrPub, accountsGap, addressGap)
+func moveWallet(req *util.Request, remoteHost, toAddrPub string, accountsGap, addressGap uint32) {
+	txaa, err := req.MoveWallet(nil, remoteHost, toAddrPub, accountsGap, addressGap)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -142,9 +142,9 @@ func moveWallet(req *util.Request, ethEndpointHost, toAddrPub string, accountsGa
 	}
 }
 
-func balanceFN(req *util.Request, ethEndpointHost string, accountsGap, addressGap uint32) {
+func balanceFN(req *util.Request, remoteHost string, accountsGap, addressGap uint32) {
 
-	balance, err := req.Balance(nil, ethEndpointHost, accountsGap, addressGap)
+	balance, err := req.Balance(nil, remoteHost, accountsGap, addressGap)
 	if err != nil {
 		log.Fatal(err)
 	}
