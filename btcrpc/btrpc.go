@@ -1,5 +1,5 @@
 // https://github.com/bitpay/insight-api
-package btrpc
+package btcrpc
 
 import (
 	"context"

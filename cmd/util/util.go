@@ -15,7 +15,7 @@ func newUnspender(remoteHost string, coin cryptopay.CoinType) (wallet.Unspender,
 	switch coin {
 	case cryptopay.BTC:
 		endpoint := "https://" + remoteHost + ":3001"
-		return btrpc.New(endpoint, http.DefaultClient), nil
+		return btcrpc.New(endpoint, http.DefaultClient), nil
 	case cryptopay.ETH:
 		if remoteHost == "" {
 			return nil, errors.New("Invalid remoteHost")
