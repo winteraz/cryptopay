@@ -30,6 +30,7 @@ type Client struct {
 }
 
 func New(endpoint string, client *http.Client) *Client {
+
 	return &Client{endpoint: endpoint, client: client}
 }
 
