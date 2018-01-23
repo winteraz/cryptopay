@@ -3,6 +3,7 @@ package wallet
 import (
 	"context"
 	"errors"
+	log "github.com/golang/glog"
 	"github.com/winteraz/cryptopay"
 )
 
@@ -35,10 +36,12 @@ func FromMnemonic(mnemonic, passwd string, unspender Unspender, coin cryptopay.C
 	if err != nil {
 		return nil, err
 	}
+
 	accountExtededPrivatePublic, err := private.DeriveExtendedAccountKey(false, coin, account)
 	if err != nil {
 		return nil, err
 	}
+	//log.Infof("Extended Public is %s", accountExtededPrivatePublic.Base58())
 	return &wallet{coin: coin,
 		priv:      accountExtededPrivate,
 		pub:       accountExtededPrivatePublic,
@@ -53,11 +56,11 @@ type Transaction struct {
 }
 
 type Wallet interface {
-	Addresses(cx context.Context, kind bool, limit uint32) ([]string, error)
+	Addresses(cx context.Context, kind bool, startIndex, limit uint32) ([]string, error)
 	// depth How many addresses we should generate
 	// returns map[address]balance.
 	Balance(cx context.Context, kind bool, depth uint32) (map[string]uint64, error)
-	BalanceByAddress(cx context.Context, address string) (uint64, error)
+	BalanceByAddress(cx context.Context, address ...string) (map[string]uint64, error)
 	//	MakeTransaction(cx context.Context, from, to string, amount, fee uint64, addrDepth uint32) ([]byte, error)
 	Move(cx context.Context, to string, addressGap uint32) ([]string, error)
 	Transactions(cx context.Context, depth uint32) ([]Transaction, error)
@@ -71,9 +74,9 @@ type wallet struct {
 	pub *cryptopay.Key
 }
 
-func (w *wallet) Addresses(cx context.Context, kind bool, limit uint32) ([]string, error) {
+func (w *wallet) Addresses(cx context.Context, kind bool, startIndex, limit uint32) ([]string, error) {
 	var sa []string
-	for index := uint32(0); index <= limit; index++ {
+	for index := startIndex; index <= limit; index++ {
 		// generate addresses
 		// if we have a private key we can generate them directly for any coin
 		if w.priv != nil {
@@ -101,34 +104,42 @@ func (w *wallet) Addresses(cx context.Context, kind bool, limit uint32) ([]strin
 }
 
 func (w *wallet) Balance(cx context.Context, kind bool, depth uint32) (map[string]uint64, error) {
-	out := make(map[string]uint64)
-
-	// generate addresses
-	addra, err := w.Addresses(cx, kind, depth)
+	indexAmounta, err := w.balanceByIndexes(cx, kind, depth)
 	if err != nil {
+		log.Error(err)
 		return nil, err
 	}
-	for _, addr := range addra {
-		out[addr], err = w.BalanceByAddress(cx, addr)
+	out := make(map[string]uint64)
+	for _, v := range indexAmounta {
+		addr, err := w.pub.DeriveExtendedAddr(w.coin, kind, v.index)
 		if err != nil {
 			return nil, err
 		}
+		out[addr] = v.amount
 	}
 	return out, nil
 }
 
-func (w *wallet) BalanceByAddress(cx context.Context, address string) (uint64, error) {
-	// Get the balance
-	unspent, err := w.unspender.Unspent(cx, address)
-	if err != nil {
-		return 0, err
+func (w *wallet) BalanceByAddress(cx context.Context, address ...string) (map[string]uint64, error) {
+	if len(address) == 0 {
+		return nil, errors.New("Invalid invalid addressList")
 	}
-	var amount uint64
-	for _, un := range unspent[address] {
-		if un.Confirmations == 0 {
-			continue
+	defer log.Flush()
+	amount := make(map[string]uint64)
+
+	// Get the balance
+	unspent, err := w.unspender.Unspent(cx, address...)
+	if err != nil {
+		return nil, err
+	}
+
+	for address, una := range unspent {
+		for _, un := range una {
+			if un.Confirmations == 0 {
+				continue
+			}
+			amount[address] += un.Amount
 		}
-		amount += un.Amount
 	}
 	return amount, nil
 }

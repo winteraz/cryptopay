@@ -3,6 +3,7 @@ package cryptopay
 import (
 	"encoding/hex"
 	"errors"
+	"fmt"
 )
 
 // https://github.com/ethereum/wiki/wiki/Design-Rationale#gas-and-fees
@@ -23,5 +24,6 @@ func EstimateFee(c CoinType, tx []byte) (uint64, error) {
 }
 
 func EncodeRawTX(coin CoinType, raw []byte) string {
+	return fmt.Sprintf("%x", raw)
 	return hex.EncodeToString(raw)
 }

@@ -11,16 +11,18 @@ import (
 	"net/http"
 )
 
+const scheme = "http"
+
 func newUnspender(remoteHost string, coin cryptopay.CoinType) (wallet.Unspender, error) {
 	switch coin {
 	case cryptopay.BTC:
-		endpoint := "https://" + remoteHost + ":3001"
+		endpoint := scheme + "://" + remoteHost + ":3001"
 		return btcrpc.New(endpoint, http.DefaultClient), nil
 	case cryptopay.ETH:
 		if remoteHost == "" {
 			return nil, errors.New("Invalid remoteHost")
 		}
-		endpoint := "https://" + remoteHost + ":8545"
+		endpoint := scheme + "://" + remoteHost + ":8545"
 		return ethrpc.New(endpoint, http.DefaultClient), nil
 	}
 	return nil, errors.New("Invalid coin")
@@ -129,6 +131,7 @@ func (r *Request) Balance(cx context.Context, remoteHost string, accountsGap, ad
 }
 
 func (r *Request) balanceAccounts(cx context.Context, remoteHost string, accountsGap, addressGap uint32) (*Balance, error) {
+	log.Infof("AccountsGap %v, AddressGap %v", accountsGap, addressGap)
 	bal := &Balance{
 		Internal: make(map[uint32]map[string]uint64),
 		External: make(map[uint32]map[string]uint64),
@@ -146,10 +149,12 @@ func (r *Request) balanceAccounts(cx context.Context, remoteHost string, account
 		}
 		if len(extAcct) != 0 {
 			bal.External[accountIndex] = extAcct
+			log.Errorf("extAcct %q", extAcct)
 			account = 0
 		}
 		if len(interAcct) != 0 {
 			bal.Internal[accountIndex] = interAcct
+			log.Errorf("interAcct %q", interAcct)
 			account = 0
 		}
 		for _, v := range extAcct {

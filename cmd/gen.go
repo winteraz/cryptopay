@@ -34,10 +34,14 @@ func main() {
 	remoteHost := flag.String("remoteHost", "", "the hostname of the RPC endpoint")
 	flag.Parse()
 	trimString(mnemonicIn, pass)
-
+	if *remoteHost == "" {
+		log.Errorf("Invalid remoteHost %v", *remoteHost)
+		return
+	}
 	switch {
 	case *balance:
 		req := &util.Request{
+			Mnemonic:       *mnemonicIn,
 			ExtendedPublic: *xpub,
 			Coin:           cryptopay.CoinType(*coin),
 		}
@@ -67,10 +71,11 @@ func generateAddr(req *util.Request, remoteHost string, accts, depth uint32) {
 	for acct := uint32(0); acct <= accts; acct++ {
 		w, err := req.WalletAccount(nil, remoteHost, acct)
 		if err != nil {
-			log.Fatal(err)
+			log.Error(err)
+			return
 		}
-
-		addra, err := w.Addresses(nil, kind, depth)
+		const startIndex uint32 = 0
+		addra, err := w.Addresses(nil, kind, startIndex, depth)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -137,7 +142,7 @@ func moveWallet(req *util.Request, remoteHost, toAddrPub string, accountsGap, ad
 	}
 	for account, txa := range txaa {
 		for _, tx := range txa {
-			fmt.Printf("%s: account %v TX  %s", req.Coin, account, tx)
+			fmt.Printf("%s: account %v TX  %s\n", req.Coin, account, tx)
 		}
 	}
 }

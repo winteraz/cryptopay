@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"github.com/bitgoin/address"
 	"github.com/bitgoin/tx"
+	log "github.com/golang/glog"
 )
 
 type Unspent struct {
@@ -18,6 +19,7 @@ type Unspent struct {
 func MakeTransactionBTC(from, to string, amount, fee uint64, unspent []Unspent) ([]byte, error) {
 	coins, err := ToUTXO(unspent, from)
 	if err != nil {
+		log.Error(err)
 		return nil, err
 	}
 	//prepare send addresses and its amount.
@@ -35,6 +37,7 @@ func MakeTransactionBTC(from, to string, amount, fee uint64, unspent []Unspent) 
 	locktime := uint32(0)
 	tx, err := tx.NewP2PK(fee, coins, locktime, send...)
 	if err != nil {
+		log.Error(err)
 		return nil, err
 	}
 	return tx.Pack()
@@ -62,6 +65,7 @@ func ToUTXO(utxos []Unspent, privs string) (tx.UTXOs, error) {
 		}
 
 		txs[i] = &tx.UTXO{
+			Value:   utxo.Amount,
 			Key:     priv,
 			TxHash:  hash,
 			TxIndex: utxo.N,
