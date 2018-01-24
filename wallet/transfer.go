@@ -10,12 +10,12 @@ import (
 // discovers if there are transactions so that we can estimate the addressGap to follow.
 // map[address]index
 func (w *wallet) DiscoverUsedIndex(cx context.Context, kind bool, addressGap uint32, onlyOnce bool) ([]uint32, error) {
-// we set kind to false(external) b/c the internal address maps to the external one and
-//  external addreses can have internal (for change) but internal are more likely to be empty 
-// if no chance was sent
+	// we set kind to false(external) b/c the internal address maps to the external one and
+	//  external addreses can have internal (for change) but internal are more likely to be empty
+	// if no chance was sent
 	//kind = false // for some reasons this doesn't work...
 	mp := []uint32{}
-	var  depth uint32
+	var depth uint32
 	for {
 		var puba []string
 		pubm := make(map[string]uint32)
@@ -46,7 +46,7 @@ func (w *wallet) DiscoverUsedIndex(cx context.Context, kind bool, addressGap uin
 			}
 			mp = append(mp, index)
 		}
-		if any == false || onlyOnce == true{
+		if any == false || onlyOnce == true {
 			// no address with transactions found
 			break
 		}
@@ -105,7 +105,7 @@ func (w *wallet) balanceByIndexes(cx context.Context, kind bool, addressGap uint
 	mapByIndex := make(map[string]uint32)
 	var addrs []string
 	for _, depth := range addraIndex {
-		if depth > highIndex{
+		if depth > highIndex {
 			highIndex = depth
 		}
 		pub, err := w.pub.DeriveExtendedAddr(w.coin, kind, depth)
@@ -145,13 +145,13 @@ func (w *wallet) Move(cx context.Context, toPub string, addressGap uint32) ([]st
 		log.Error(err)
 		return nil, err
 	}
-	if highestIndex  == 0 && len(unspent) == 0{
+	if highestIndex == 0 && len(unspent) == 0 {
 		return nil, nil
 	}
 	log.Infof("highest index is %v", highestIndex)
 	kind = true
 	onlyOnce = false
-	unspentInt, _, err := w.balanceByIndexes(cx, kind, addressGap + highestIndex, onlyOnce)
+	unspentInt, _, err := w.balanceByIndexes(cx, kind, addressGap+highestIndex, onlyOnce)
 	if err != nil {
 		log.Error(err)
 		return nil, err
@@ -216,8 +216,8 @@ func (w *wallet) withdrawAddress(cx context.Context, toAddr string, kind bool, i
 	if amount < (fee + 1) {
 		return "", nil
 	}
-	log.Infof("amount %v, fee %v, amount - fee %v", amount, fee, amount - fee)
-	b, err = makeTransaction(cx, w.unspender, priv, pub, toAddr, w.coin, amount - fee, fee)
+	log.Infof("amount %v, fee %v, amount - fee %v", amount, fee, amount-fee)
+	b, err = makeTransaction(cx, w.unspender, priv, pub, toAddr, w.coin, amount-fee, fee)
 	if err != nil {
 		return "", err
 	}
@@ -253,7 +253,7 @@ func makeTransaction(cx context.Context, unspender Unspender, priv *cryptopay.Ke
 
 		return cryptopay.MakeTransactionETH(priv, to, nonce, amount,
 			cryptopay.GasLimit,
-			cryptopay.GasPrice *cryptopay.GweiToWei)
+			cryptopay.GasPrice*cryptopay.GweiToWei)
 	}
 	return nil, errors.New("unsupported coin " + coin.String())
 }

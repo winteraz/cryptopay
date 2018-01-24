@@ -13,7 +13,7 @@ import (
 
 const scheme = "http"
 
-func newUnspender(remoteHost string, coin cryptopay.CoinType) (wallet.Unspender, error) {
+func newUnspender(remoteHost string, coin cryptopay.CoinType) (wallet.Requester, error) {
 	switch coin {
 	case cryptopay.BTC:
 		endpoint := scheme + "://" + remoteHost + ":3001"
@@ -26,7 +26,6 @@ func newUnspender(remoteHost string, coin cryptopay.CoinType) (wallet.Unspender,
 		return ethrpc.New(endpoint, http.DefaultClient), nil
 	}
 	return nil, errors.New("Invalid coin")
-
 }
 
 type Request struct {
@@ -35,6 +34,10 @@ type Request struct {
 	Passwd         string
 	ExtendedPublic string
 	Coin           cryptopay.CoinType
+}
+
+func (r *Request) Broadcaster(cx context.Context, remoteHost string) (wallet.Broadcaster, error) {
+	return newUnspender(remoteHost, r.Coin)
 }
 
 func (r *Request) WalletAccount(cx context.Context, remoteHost string, accountIndex uint32) (wallet.Wallet, error) {

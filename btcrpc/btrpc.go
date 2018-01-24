@@ -2,6 +2,7 @@
 package btcrpc
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,8 +11,8 @@ import (
 	"github.com/winteraz/cryptopay"
 	"io/ioutil"
 	"net/http"
-	"time"
 	"strings"
+	"time"
 )
 
 type Client struct {
@@ -19,14 +20,14 @@ type Client struct {
 	cl       *http.Client
 }
 
-func (c *Client)Do(req *http.Request)([]byte, int, error){
+func (c *Client) Do(req *http.Request) ([]byte, int, error) {
 	rsp, err := c.cl.Do(req)
-	if err != nil{
+	if err != nil {
 		return nil, 0, err
 	}
 	defer rsp.Body.Close()
 	b, err := ioutil.ReadAll(rsp.Body)
-	return b,  rsp.StatusCode, err
+	return b, rsp.StatusCode, err
 }
 
 func New(endpoint string, cl *http.Client) *Client {
@@ -53,10 +54,11 @@ func (o *Output) ToUnspent() cryptopay.Unspent {
 }
 
 const timeout = 30 * time.Second
+
 // Implement wallet.Unspender. It supports bitcoin only
 // receives xpub
 func (c *Client) Unspent(cx context.Context, addr ...string) (map[string][]cryptopay.Unspent, error) {
-	if len(addr) == 0{
+	if len(addr) == 0 {
 		return nil, errors.New("Invalid address list")
 	}
 	m := make(map[string][]cryptopay.Unspent)
@@ -123,8 +125,64 @@ type Transaction struct {
 	TXID string `json:"txid"`
 }
 
+type Summary struct {
+	Address       string `json:"addrStr"`
+	TotalReceived int    `json:"totalReceived"`
+}
+
 func (c *Client) HasTransactions(cx context.Context, addr ...string) (map[string]bool, error) {
-	if len(addr) == 0{
+	if len(addr) == 0 {
+		return nil, errors.New("Invalid address list")
+	}
+	var address string
+	if len(addr) > 1 {
+		address = strings.Join(addr, ",")
+	} else {
+		address = addr[0]
+	}
+	URL := fmt.Sprintf("%s/insight-api/addrs/%s/summary", c.endpoint, address)
+
+	req, err := http.NewRequest("GET", URL, nil)
+	if err != nil {
+		return nil, err
+	}
+	ctx, _ := context.WithTimeout(cx, timeout)
+	req = req.WithContext(ctx)
+	var b []byte
+	var status int
+	//log.Infof("StartTX call %s", URL)
+	b, status, err = c.Do(req)
+	if err != nil {
+		log.Error(err)
+		return nil, err
+	}
+	if status != 200 {
+		err = fmt.Errorf("Invalid response: \n URL %s\n Status  %v, body %s",
+			URL, status, b)
+		log.Error(err)
+		return nil, err
+	}
+	var sa []Summary
+	if err = json.Unmarshal(b, &sa); err != nil {
+		log.Errorf("%v, %s", err, b)
+		return nil, err
+	}
+	if len(sa) != len(addr) {
+		return nil, fmt.Errorf("requested %v, received %v", len(addr), len(sa))
+	}
+	m := make(map[string]bool)
+	for _, v := range sa {
+		if v.Address == "" {
+			return nil, errors.New("Invalid address")
+		}
+		m[v.Address] = (v.TotalReceived > 0)
+	}
+	return m, nil
+}
+
+// this is slow b.c requires multiple http roundtrips.
+func (c *Client) hasTransactionsFromTX(cx context.Context, addr ...string) (map[string]bool, error) {
+	if len(addr) == 0 {
 		return nil, errors.New("Invalid address list")
 	}
 	type Response struct {
@@ -136,9 +194,8 @@ func (c *Client) HasTransactions(cx context.Context, addr ...string) (map[string
 		err     error
 	}
 	ch := make(chan Rsp, len(addr))
-	m := make(map[string]bool)
 	for _, address := range addr {
-		go func(address string) {
+		go func(cx context.Context, address string) {
 			rsp := Rsp{address: address}
 			URL := fmt.Sprintf("%s/insight-api/addrs/%s/txs?from=0&to=1", c.endpoint, address)
 			var req *http.Request
@@ -157,7 +214,7 @@ func (c *Client) HasTransactions(cx context.Context, addr ...string) (map[string
 				log.Error(rsp.err)
 				ch <- rsp
 				return
-			} 
+			}
 			if status != 200 {
 				rsp.err = fmt.Errorf("Invalid response: \n URL %s\n Status  %v, body %s",
 					URL, status, b)
@@ -174,9 +231,9 @@ func (c *Client) HasTransactions(cx context.Context, addr ...string) (map[string
 
 			rsp.ok = (v.TotalItems > 0)
 			ch <- rsp
-		}(address)
+		}(cx, address)
 	}
-	var i int
+	m := make(map[string]bool)
 	for rsp := range ch {
 		if rsp.err != nil {
 			log.Error(rsp.err)
@@ -184,40 +241,71 @@ func (c *Client) HasTransactions(cx context.Context, addr ...string) (map[string
 		}
 		m[rsp.address] = rsp.ok
 		//log.Infof("address %s, ok %v", rsp.address, rsp.ok)
-		if len(m) == len(addr){
+		if len(m) == len(addr) {
 			break
 		}
-		i++
 	}
 	close(ch)
 	return m, nil
 }
 
-func (c *Client) BroadcastTX(cx context.Context, coin cryptopay.CoinType, tx string) error {
+func (c *Client) Broadcast(cx context.Context, txa ...string) (map[string]error, error) {
 	URL := fmt.Sprintf("%s/insight-api/tx/send", c.endpoint)
 	type Req struct {
 		RAWTX string `json:"rawtx"`
 	}
-	rb, err := json.Marshal(&Req{RAWTX: tx})
-	if err != nil {
-		return err
-	}
 
-	req, err := http.NewRequest("POST", URL, strings.NewReader(string(rb)))
-	if err != nil {
-		return err
+	type Rsp struct {
+		tx  string
+		err error
 	}
-	req.Header.Set("Content-Type", "application/json")
-	ctx, _ := context.WithTimeout(cx, timeout)
-	req = req.WithContext(ctx)
-	b, status, err := c.Do(req)
-	if err != nil {
-		return err
+	ch := make(chan Rsp, len(txa))
+	for k, v := range txa {
+		if k == 5 {
+			// not too fast..
+			time.Sleep(2 * time.Second)
+			k = 0
+		}
+		go func(cx context.Context, tx string) {
+			r := Rsp{tx: tx}
+			var rb []byte
+			rb, r.err = json.Marshal(&Req{RAWTX: tx})
+			if r.err != nil {
+				ch <- r
+				return
+			}
+			var req *http.Request
+			req, r.err = http.NewRequest("POST", URL, bytes.NewReader(rb))
+			if r.err != nil {
+				ch <- r
+				return
+			}
+			req.Header.Set("Content-Type", "application/json")
+			ctx, _ := context.WithTimeout(cx, timeout)
+			req = req.WithContext(ctx)
+			var b []byte
+			var status int
+			b, status, r.err = c.Do(req)
+			if r.err != nil {
+				ch <- r
+				return
+			}
+			if status != 200 {
+				r.err = fmt.Errorf("Status %s, body %s", status, b)
+			}
+			ch <- r
+		}(cx, v)
 	}
- 
-	if status  != 200 {
-		return fmt.Errorf("Status %s, body %s", status, b)
+	m := make(map[string]error)
+	for rsp := range ch {
+		m[rsp.tx] = rsp.err
+		if rsp.err != nil {
+			log.Error(rsp.err)
+		}
+		if len(m) == len(txa) {
+			break
+		}
 	}
-	return nil
-
+	close(ch)
+	return m, nil
 }

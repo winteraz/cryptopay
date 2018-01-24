@@ -1,13 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	log "github.com/golang/glog"
 	"github.com/winteraz/cryptopay"
 	"github.com/winteraz/cryptopay/cmd/util"
 	"strings"
-	"context"
 )
 
 func trimString(s ...*string) {
@@ -26,6 +26,7 @@ func main() {
 	accts := flag.Int("accts", 10, "number of accounts")
 	coin := flag.Int("coin", 0, "the coin of the wallet, default is 0 (BTC)")
 
+	broadcast := flag.Bool("broadcast", false, "broadcast the transactions (if move is used)")
 	move := flag.Bool("move", false, "move the wallet to a new address")
 	toAddr := flag.String("toAddr", "", "the address to send the wallet to")
 
@@ -54,7 +55,7 @@ func main() {
 			Passwd:   *pass,
 			Coin:     cryptopay.CoinType(*coin),
 		}
-		moveWallet(cx, req, *remoteHost, *toAddr, uint32(*accts), uint32(*depth))
+		moveWallet(cx, req, *remoteHost, *toAddr, uint32(*accts), uint32(*depth), *broadcast)
 	case *genAddr:
 		req := &util.Request{
 			Mnemonic: *mnemonicIn,
@@ -67,7 +68,7 @@ func main() {
 	}
 }
 
-func generateAddr(cx  context.Context, req *util.Request, remoteHost string, accts, depth uint32) {
+func generateAddr(cx context.Context, req *util.Request, remoteHost string, accts, depth uint32) {
 	var sa []string
 	kind := false // external address type/kind
 	for acct := uint32(0); acct <= accts; acct++ {
@@ -152,16 +153,37 @@ func generate(cx context.Context, mnemonicIn, pass *string) {
 
 }
 
-func moveWallet(cx context.Context, req *util.Request, remoteHost, toAddrPub string, accountsGap, addressGap uint32) {
+func moveWallet(cx context.Context, req *util.Request, remoteHost, toAddrPub string, accountsGap, addressGap uint32, broadcast bool) {
 	txaa, err := req.MoveWallet(cx, remoteHost, toAddrPub, accountsGap, addressGap)
 	if err != nil {
 		log.Fatal(err)
 	}
+	var txlist []string
 	for account, txa := range txaa {
 		for _, tx := range txa {
+			txlist = append(txlist, tx)
 			fmt.Printf("%s: account %v TX  %s\n", req.Coin, account, tx)
 		}
 	}
+	if len(txlist) == 0 {
+		return
+	}
+	br, err := req.Broadcaster(cx, remoteHost)
+	if err != nil {
+		log.Error(err)
+		return
+	}
+	txErr, err := br.Broadcast(cx, txlist...)
+	if err != nil {
+		log.Error(err)
+		return
+	}
+	for tx, err := range txErr {
+		if err != nil {
+			log.Errorf("TX %s, err %v", tx, err)
+		}
+	}
+
 }
 
 func balanceFN(cx context.Context, req *util.Request, remoteHost string, accountsGap, addressGap uint32) {

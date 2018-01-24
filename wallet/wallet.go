@@ -7,10 +7,20 @@ import (
 	"github.com/winteraz/cryptopay"
 )
 
+// The remote calls
+type Requester interface {
+	Unspender
+	Broadcaster
+}
+
 type Unspender interface {
 	HasTransactions(cx context.Context, addr ...string) (map[string]bool, error)
 	Unspent(cx context.Context, addr ...string) (map[string][]cryptopay.Unspent, error)
 	CountTransactions(cx context.Context, addr ...string) (map[string]uint64, error)
+}
+
+type Broadcaster interface {
+	Broadcast(cx context.Context, rawTransaction ...string) (map[string]error, error)
 }
 
 // from hardened public key(m/44/coin/account). This wallet is unable to sign transactions.
@@ -137,8 +147,8 @@ func (w *wallet) BalanceByAddress(cx context.Context, address ...string) (map[st
 
 	for address, una := range unspent {
 		for _, un := range una {
-			log.Infof("address %v, amount %v, confirmations %v", 
-					address, un.Amount, un.Confirmations)
+			log.Infof("address %v, amount %v, confirmations %v",
+				address, un.Amount, un.Confirmations)
 			if un.Confirmations == 0 {
 				continue
 			}
