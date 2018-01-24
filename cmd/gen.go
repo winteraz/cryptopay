@@ -35,6 +35,7 @@ func main() {
 
 	remoteHost := flag.String("remoteHost", "", "the hostname of the RPC endpoint")
 	flag.Parse()
+	defer log.Flush()
 	trimString(mnemonicIn, pass)
 	if *remoteHost == "" {
 		log.Errorf("Invalid remoteHost %v", *remoteHost)
@@ -150,13 +151,13 @@ func generate(cx context.Context, mnemonicIn, pass *string) {
 		fmt.Printf("first child External private %q\n", childPrivate)
 		fmt.Printf("first child External address %q\n\n", childPublic)
 	}
-
 }
 
 func moveWallet(cx context.Context, req *util.Request, remoteHost, toAddrPub string, accountsGap, addressGap uint32, broadcast bool) {
 	txaa, err := req.MoveWallet(cx, remoteHost, toAddrPub, accountsGap, addressGap)
 	if err != nil {
-		log.Fatal(err)
+		log.Error(err)
+		return
 	}
 	var txlist []string
 	for account, txa := range txaa {
