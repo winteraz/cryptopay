@@ -1,13 +1,16 @@
 package cryptopay
 
 import (
+	"bytes"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	log "github.com/golang/glog"
 	"math/big"
+	"time"
 )
 
 func MakeTransactionETH(fromKey *Key, to string, nonce uint64, value uint64, gasLimit, gasPrice uint64) ([]byte, error) {
+	t := time.Now()
 	ecdsaKey, err := fromKey.ToECDSAPrivate()
 	if err != nil {
 		return nil, err
@@ -18,14 +21,22 @@ func MakeTransactionETH(fromKey *Key, to string, nonce uint64, value uint64, gas
 	var gasPriceInt = big.NewInt(int64(gasPrice))
 	toAddr := common.HexToAddress(to)
 
-	var data []byte
-	signer := types.NewEIP155Signer(nil)
-	tx := types.NewTransaction(nonce, toAddr, amount, gasLimit, gasPriceInt, data)
-	signed_tx, err := types.SignTx(tx, signer, ecdsaKey)
+	// https://ethereum.stackexchange.com/questions/11551/what-are-the-ids-for-the-various-ethereum-chains
+	chainID := big.NewInt(1)
+	signer := types.NewEIP155Signer(chainID)
+	log.Infof("Time since %s", time.Since(t))
+	tx := types.NewTransaction(nonce, toAddr, amount, gasLimit, gasPriceInt, nil)
+	log.Infof("Time since %s", time.Since(t))
+	signedTx, err := types.SignTx(tx, signer, ecdsaKey)
 	if err != nil {
 		return nil, err
 	}
-
-	ts := types.Transactions{signed_tx}
-	return ts.GetRlp(0), nil
+	log.Infof("Time since %s", time.Since(t))
+	var buff bytes.Buffer
+	if err = signedTx.EncodeRLP(&buff); err != nil {
+		return nil, err
+	}
+	log.Infof("Time since %s", time.Since(t))
+	log.Flush()
+	return buff.Bytes(), nil
 }

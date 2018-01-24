@@ -7,6 +7,7 @@ import (
 	"github.com/winteraz/cryptopay"
 	"github.com/winteraz/cryptopay/cmd/util"
 	"strings"
+	"context"
 )
 
 func trimString(s ...*string) {
@@ -38,6 +39,7 @@ func main() {
 		log.Errorf("Invalid remoteHost %v", *remoteHost)
 		return
 	}
+	cx := context.Background()
 	switch {
 	case *balance:
 		req := &util.Request{
@@ -45,46 +47,61 @@ func main() {
 			ExtendedPublic: *xpub,
 			Coin:           cryptopay.CoinType(*coin),
 		}
-		balanceFN(req, *remoteHost, uint32(*accts), uint32(*depth))
+		balanceFN(cx, req, *remoteHost, uint32(*accts), uint32(*depth))
 	case *move:
 		req := &util.Request{
 			Mnemonic: *mnemonicIn,
 			Passwd:   *pass,
 			Coin:     cryptopay.CoinType(*coin),
 		}
-		moveWallet(req, *remoteHost, *toAddr, uint32(*accts), uint32(*depth))
+		moveWallet(cx, req, *remoteHost, *toAddr, uint32(*accts), uint32(*depth))
 	case *genAddr:
 		req := &util.Request{
 			Mnemonic: *mnemonicIn,
 			Passwd:   *pass,
 			Coin:     cryptopay.CoinType(*coin),
 		}
-		generateAddr(req, *remoteHost, uint32(*accts), uint32(*depth))
+		generateAddr(cx, req, *remoteHost, uint32(*accts), uint32(*depth))
 	default:
-		generate(mnemonicIn, pass)
+		generate(cx, mnemonicIn, pass)
 	}
 }
 
-func generateAddr(req *util.Request, remoteHost string, accts, depth uint32) {
+func generateAddr(cx  context.Context, req *util.Request, remoteHost string, accts, depth uint32) {
 	var sa []string
 	kind := false // external address type/kind
 	for acct := uint32(0); acct <= accts; acct++ {
-		w, err := req.WalletAccount(nil, remoteHost, acct)
+		w, err := req.WalletAccount(cx, remoteHost, acct)
 		if err != nil {
 			log.Error(err)
 			return
 		}
 		const startIndex uint32 = 0
-		addra, err := w.Addresses(nil, kind, startIndex, depth)
+		addra, err := w.Addresses(cx, kind, startIndex, depth)
 		if err != nil {
 			log.Fatal(err)
 		}
 		sa = append(sa, addra...)
 	}
 	fmt.Printf("req %#v\n addresses \n %q", *req, sa)
+	kind = true
+	for acct := uint32(0); acct <= accts; acct++ {
+		w, err := req.WalletAccount(cx, remoteHost, acct)
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		const startIndex uint32 = 0
+		addra, err := w.Addresses(cx, kind, startIndex, depth)
+		if err != nil {
+			log.Fatal(err)
+		}
+		sa = append(sa, addra...)
+	}
+	log.Infof("Private addresses %q", sa)
 }
 
-func generate(mnemonicIn, pass *string) {
+func generate(cx context.Context, mnemonicIn, pass *string) {
 	var priv *cryptopay.Key
 	var err error
 	var mnemonic string
@@ -135,8 +152,8 @@ func generate(mnemonicIn, pass *string) {
 
 }
 
-func moveWallet(req *util.Request, remoteHost, toAddrPub string, accountsGap, addressGap uint32) {
-	txaa, err := req.MoveWallet(nil, remoteHost, toAddrPub, accountsGap, addressGap)
+func moveWallet(cx context.Context, req *util.Request, remoteHost, toAddrPub string, accountsGap, addressGap uint32) {
+	txaa, err := req.MoveWallet(cx, remoteHost, toAddrPub, accountsGap, addressGap)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -147,9 +164,9 @@ func moveWallet(req *util.Request, remoteHost, toAddrPub string, accountsGap, ad
 	}
 }
 
-func balanceFN(req *util.Request, remoteHost string, accountsGap, addressGap uint32) {
+func balanceFN(cx context.Context, req *util.Request, remoteHost string, accountsGap, addressGap uint32) {
 
-	balance, err := req.Balance(nil, remoteHost, accountsGap, addressGap)
+	balance, err := req.Balance(cx, remoteHost, accountsGap, addressGap)
 	if err != nil {
 		log.Fatal(err)
 	}

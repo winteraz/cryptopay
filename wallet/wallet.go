@@ -104,7 +104,8 @@ func (w *wallet) Addresses(cx context.Context, kind bool, startIndex, limit uint
 }
 
 func (w *wallet) Balance(cx context.Context, kind bool, depth uint32) (map[string]uint64, error) {
-	indexAmounta, err := w.balanceByIndexes(cx, kind, depth)
+	const onlyOnce = false // we should modify Balance call
+	indexAmounta, _, err := w.balanceByIndexes(cx, kind, depth, onlyOnce)
 	if err != nil {
 		log.Error(err)
 		return nil, err
@@ -121,6 +122,7 @@ func (w *wallet) Balance(cx context.Context, kind bool, depth uint32) (map[strin
 }
 
 func (w *wallet) BalanceByAddress(cx context.Context, address ...string) (map[string]uint64, error) {
+	log.Infof("Address %q", address)
 	if len(address) == 0 {
 		return nil, errors.New("Invalid invalid addressList")
 	}
@@ -135,6 +137,8 @@ func (w *wallet) BalanceByAddress(cx context.Context, address ...string) (map[st
 
 	for address, una := range unspent {
 		for _, un := range una {
+			log.Infof("address %v, amount %v, confirmations %v", 
+					address, un.Amount, un.Confirmations)
 			if un.Confirmations == 0 {
 				continue
 			}

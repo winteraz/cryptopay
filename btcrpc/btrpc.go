@@ -10,12 +10,23 @@ import (
 	"github.com/winteraz/cryptopay"
 	"io/ioutil"
 	"net/http"
+	"time"
 	"strings"
 )
 
 type Client struct {
 	endpoint string
 	cl       *http.Client
+}
+
+func (c *Client)Do(req *http.Request)([]byte, int, error){
+	rsp, err := c.cl.Do(req)
+	if err != nil{
+		return nil, 0, err
+	}
+	defer rsp.Body.Close()
+	b, err := ioutil.ReadAll(rsp.Body)
+	return b,  rsp.StatusCode, err
 }
 
 func New(endpoint string, cl *http.Client) *Client {
@@ -41,9 +52,13 @@ func (o *Output) ToUnspent() cryptopay.Unspent {
 	}
 }
 
+const timeout = 30 * time.Second
 // Implement wallet.Unspender. It supports bitcoin only
 // receives xpub
 func (c *Client) Unspent(cx context.Context, addr ...string) (map[string][]cryptopay.Unspent, error) {
+	if len(addr) == 0{
+		return nil, errors.New("Invalid address list")
+	}
 	m := make(map[string][]cryptopay.Unspent)
 	var addrs string
 	if len(addr) == 1 {
@@ -60,20 +75,16 @@ func (c *Client) Unspent(cx context.Context, addr ...string) (map[string][]crypt
 	if err != nil {
 		return nil, err
 	}
-	rsp, err := c.cl.Do(req)
+	ctx, _ := context.WithTimeout(cx, timeout)
+	req = req.WithContext(ctx)
+	b, status, err := c.Do(req)
 	if err != nil {
 		log.Error(err)
 		return nil, err
 	}
-
-	b, err := ioutil.ReadAll(rsp.Body)
-	rsp.Body.Close()
-	if err != nil {
-		return nil, err
-	}
-	if rsp.StatusCode != 200 {
+	if status != 200 {
 		err = fmt.Errorf("Invalid response: \n URL %s\n Status  %v, body %s",
-			URL, rsp.StatusCode, b)
+			URL, status, b)
 		log.Error(err)
 		return nil, err
 	}
@@ -113,6 +124,9 @@ type Transaction struct {
 }
 
 func (c *Client) HasTransactions(cx context.Context, addr ...string) (map[string]bool, error) {
+	if len(addr) == 0{
+		return nil, errors.New("Invalid address list")
+	}
 	type Response struct {
 		TotalItems int `json:"totalItems"`
 	}
@@ -133,23 +147,20 @@ func (c *Client) HasTransactions(cx context.Context, addr ...string) (map[string
 				ch <- rsp
 				return
 			}
-			var resp *http.Response
-			resp, rsp.err = c.cl.Do(req)
+			ctx, _ := context.WithTimeout(cx, timeout)
+			req = req.WithContext(ctx)
+			var b []byte
+			var status int
+			//log.Infof("StartTX call %s", URL)
+			b, status, rsp.err = c.Do(req)
 			if rsp.err != nil {
 				log.Error(rsp.err)
 				ch <- rsp
 				return
-			}
-			var b []byte
-			b, rsp.err = ioutil.ReadAll(resp.Body)
-			resp.Body.Close()
-			if rsp.err != nil {
-				ch <- rsp
-				return
-			}
-			if resp.StatusCode != 200 {
+			} 
+			if status != 200 {
 				rsp.err = fmt.Errorf("Invalid response: \n URL %s\n Status  %v, body %s",
-					URL, resp.StatusCode, b)
+					URL, status, b)
 				log.Error(rsp.err)
 				ch <- rsp
 				return
@@ -172,8 +183,8 @@ func (c *Client) HasTransactions(cx context.Context, addr ...string) (map[string
 			return nil, rsp.err
 		}
 		m[rsp.address] = rsp.ok
-		log.Infof("address %s, ok %v", rsp.address, rsp.ok)
-		if i == (len(addr) - 1) {
+		//log.Infof("address %s, ok %v", rsp.address, rsp.ok)
+		if len(m) == len(addr){
 			break
 		}
 		i++
@@ -197,14 +208,15 @@ func (c *Client) BroadcastTX(cx context.Context, coin cryptopay.CoinType, tx str
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	rsp, err := c.cl.Do(req)
+	ctx, _ := context.WithTimeout(cx, timeout)
+	req = req.WithContext(ctx)
+	b, status, err := c.Do(req)
 	if err != nil {
 		return err
 	}
-	b, err := ioutil.ReadAll(rsp.Body)
-	rsp.Body.Close()
-	if rsp.StatusCode != 200 {
-		return fmt.Errorf("Status %s, body %s", rsp.Status, b)
+ 
+	if status  != 200 {
+		return fmt.Errorf("Status %s, body %s", status, b)
 	}
 	return nil
 
