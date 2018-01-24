@@ -160,15 +160,26 @@ func moveWallet(cx context.Context, req *util.Request, remoteHost, toAddrPub str
 		return
 	}
 	var txlist []string
+	var total uint64
 	for account, txa := range txaa {
 		for _, tx := range txa {
 			txlist = append(txlist, tx)
-			fmt.Printf("%s: account %v TX  %s\n", req.Coin, account, tx)
+			dtx, err := cryptopay.DecodeTX(req.Coin, tx)
+			if err != nil {
+				log.Error(err)
+			}
+			total += dtx[0].Amount
+			fmt.Printf("%s: account %v TX  %s\n\n decoded %#v", req.Coin, account, tx, dtx[0])
 		}
 	}
 	if len(txlist) == 0 {
 		return
 	}
+	log.Infof("Total %v", total)
+	if !broadcast {
+		return
+	}
+	log.Infof("Broadcast transactions")
 	br, err := req.Broadcaster(cx, remoteHost)
 	if err != nil {
 		log.Error(err)
