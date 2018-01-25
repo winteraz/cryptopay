@@ -9,8 +9,10 @@ import (
 	"fmt"
 	log "github.com/golang/glog"
 	"github.com/winteraz/cryptopay"
+	"github.com/winteraz/cryptopay/blockchain"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -250,10 +252,6 @@ func (c *Client) hasTransactionsFromTX(cx context.Context, addr ...string) (map[
 }
 
 func (c *Client) Broadcast(cx context.Context, txa ...string) (map[string]error, error) {
-	URL := fmt.Sprintf("%s/insight-api/tx/send", c.endpoint)
-	type Req struct {
-		RAWTX string `json:"rawtx"`
-	}
 
 	type Rsp struct {
 		tx  string
@@ -268,31 +266,7 @@ func (c *Client) Broadcast(cx context.Context, txa ...string) (map[string]error,
 		}
 		go func(cx context.Context, tx string) {
 			r := Rsp{tx: tx}
-			var rb []byte
-			rb, r.err = json.Marshal(&Req{RAWTX: tx})
-			if r.err != nil {
-				ch <- r
-				return
-			}
-			var req *http.Request
-			req, r.err = http.NewRequest("POST", URL, bytes.NewReader(rb))
-			if r.err != nil {
-				ch <- r
-				return
-			}
-			req.Header.Set("Content-Type", "application/json")
-			ctx, _ := context.WithTimeout(cx, timeout)
-			req = req.WithContext(ctx)
-			var b []byte
-			var status int
-			b, status, r.err = c.Do(req)
-			if r.err != nil {
-				ch <- r
-				return
-			}
-			if status != 200 {
-				r.err = fmt.Errorf("Status %s, body %s", status, b)
-			}
+			r.err = c.BroadcastTX(cx, tx)
 			ch <- r
 		}(cx, v)
 	}
@@ -308,4 +282,97 @@ func (c *Client) Broadcast(cx context.Context, txa ...string) (map[string]error,
 	}
 	close(ch)
 	return m, nil
+}
+
+func (c *Client) BroadcastTX(cx context.Context, tx string) error {
+	URL := fmt.Sprintf("%s/insight-api/tx/send", c.endpoint)
+	type Req struct {
+		RAWTX string `json:"rawtx"`
+	}
+	rb, err := json.Marshal(&Req{RAWTX: tx})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest("POST", URL, bytes.NewReader(rb))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	ctx, _ := context.WithTimeout(cx, timeout)
+	req = req.WithContext(ctx)
+	b, status, err := c.Do(req)
+	if err != nil {
+		return err
+	}
+	if status != 200 {
+		return fmt.Errorf("Status %s, body %s", status, b)
+	}
+	return nil
+}
+
+func (c *Client) broadcastBlockchain(cx context.Context, tx string) error {
+	if err := blockchain.New(c.cl).BroadcastTX(cx, tx); err != nil {
+		log.Error(err)
+		return err
+	}
+	return nil
+}
+
+func (c *Client) broadcastInsight(cx context.Context, tx string) error {
+	URL := "https://insight.bitpay.com/api/tx/send"
+	type Req struct {
+		RAWTX string `json:"rawtx"`
+	}
+	rb, err := json.Marshal(&Req{RAWTX: tx})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest("POST", URL, bytes.NewReader(rb))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	ctx, _ := context.WithTimeout(cx, timeout)
+	req = req.WithContext(ctx)
+	b, status, err := c.Do(req)
+	if err != nil {
+		return err
+	}
+	if status != 200 {
+		return fmt.Errorf("Status %s, body %s", status, b)
+	}
+	return nil
+}
+
+func (c *Client) broadcastBTC(cx context.Context, tx string) error {
+	type RT struct {
+		Error string `json:"err_msg"`
+	}
+	uv := url.Values{}
+	uv.Set("rawhex", tx)
+	URL := "https://btc.com/api/v1/tools/tx-publish"
+	req, err := http.NewRequest("POST", URL, strings.NewReader(uv.Encode()))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	ctx, _ := context.WithTimeout(cx, timeout)
+	req = req.WithContext(ctx)
+	b, status, err := c.Do(req)
+	if err != nil {
+		return err
+	}
+	if status != 200 {
+		return fmt.Errorf("Status %s, body %s", status, b)
+	}
+	var r RT
+	if err = json.Unmarshal(b, &r); err != nil {
+		return err
+	}
+	if r.Error != "" {
+		err = fmt.Errorf("err %#v", r)
+		log.Error(err)
+		return err
+	}
+	return nil
 }

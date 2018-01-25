@@ -34,7 +34,7 @@ type Output struct {
 func (o *Output) ToUnspent() cryptopay.Unspent {
 	return cryptopay.Unspent{
 		Tx:            o.Hash,
-		Index:         o.Index,
+		N:             o.Index,
 		Amount:        o.Value,
 		Confirmations: o.Confirmations,
 		Script:        o.Script,
@@ -148,15 +148,16 @@ func (c *Client) HasTransactions(cx context.Context, addr ...string) (map[string
 	return m, nil
 }
 
-func (c *Client) BroadcastTX(cx context.Context, coin cryptopay.CoinType, tx []byte) error {
+func (c *Client) BroadcastTX(cx context.Context, tx string) error {
 	const URL = "https://blockchain.info/pushtx"
 	en := url.Values{}
-	en.Set("tx", string(tx))
+	en.Set("tx", tx)
 	req, err := http.NewRequest("POST", URL, strings.NewReader(en.Encode()))
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req = req.WithContext(cx)
 	rsp, err := c.cl.Do(req)
 	if err != nil {
 		return err
