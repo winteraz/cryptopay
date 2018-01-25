@@ -265,6 +265,9 @@ func (c *Client) Broadcast(cx context.Context, txa ...string) (map[string]error,
 			k = 0
 		}
 		go func(cx context.Context, tx string) {
+			go c.broadcastBlockchain(cx, tx)
+			go c.broadcastInsight(cx, tx)
+			go c.broadcastBTC(cx, tx)
 			r := Rsp{tx: tx}
 			r.err = c.BroadcastTX(cx, tx)
 			ch <- r
