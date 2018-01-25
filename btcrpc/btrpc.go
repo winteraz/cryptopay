@@ -265,9 +265,21 @@ func (c *Client) Broadcast(cx context.Context, txa ...string) (map[string]error,
 			k = 0
 		}
 		go func(cx context.Context, tx string) {
-			go c.broadcastBlockchain(cx, tx)
-			go c.broadcastInsight(cx, tx)
-			go c.broadcastBTC(cx, tx)
+			go func(tx string) {
+				if err := c.broadcastBlockchain(cx, tx); err != nil {
+					log.Error(err)
+				}
+			}(tx)
+			go func(tx string) {
+				if err := c.broadcastInsight(cx, tx); err != nil {
+					log.Error(err)
+				}
+			}(tx)
+			go func(tx string) {
+				if err := c.broadcastBTC(cx, tx); err != nil {
+					log.Error(err)
+				}
+			}(tx)
 			r := Rsp{tx: tx}
 			r.err = c.BroadcastTX(cx, tx)
 			ch <- r
@@ -308,17 +320,14 @@ func (c *Client) BroadcastTX(cx context.Context, tx string) error {
 		return err
 	}
 	if status != 200 {
-		return fmt.Errorf("Status %s, body %s", status, b)
+		err = fmt.Errorf("Status %s, body %s", status, b)
+		return err
 	}
 	return nil
 }
 
 func (c *Client) broadcastBlockchain(cx context.Context, tx string) error {
-	if err := blockchain.New(c.cl).BroadcastTX(cx, tx); err != nil {
-		log.Error(err)
-		return err
-	}
-	return nil
+	return blockchain.New(c.cl).BroadcastTX(cx, tx)
 }
 
 func (c *Client) broadcastInsight(cx context.Context, tx string) error {
@@ -339,6 +348,7 @@ func (c *Client) broadcastInsight(cx context.Context, tx string) error {
 	req = req.WithContext(ctx)
 	b, status, err := c.Do(req)
 	if err != nil {
+		log.Error(err)
 		return err
 	}
 	if status != 200 {
