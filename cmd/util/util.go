@@ -5,7 +5,7 @@ import (
 	"errors"
 	log "github.com/golang/glog"
 	"github.com/winteraz/cryptopay"
-	"github.com/winteraz/cryptopay/btcrpc"
+	"github.com/winteraz/cryptopay/bcoin"
 	"github.com/winteraz/cryptopay/ethrpc"
 	"github.com/winteraz/cryptopay/wallet"
 	"net/http"
@@ -16,8 +16,9 @@ const scheme = "http"
 func newUnspender(remoteHost string, coin cryptopay.CoinType) (wallet.Requester, error) {
 	switch coin {
 	case cryptopay.BTC:
-		endpoint := scheme + "://" + remoteHost + ":3001"
-		return btcrpc.New(endpoint, http.DefaultClient), nil
+		// endpoint := scheme + "://" + remoteHost + ":3001" // insightAPI
+		endpoint := scheme + "://" + remoteHost + ":8332" // bcoin API
+		return bcoin.New(endpoint, http.DefaultClient), nil
 	case cryptopay.ETH:
 		if remoteHost == "" {
 			return nil, errors.New("Invalid remoteHost")
