@@ -214,6 +214,7 @@ func (w *wallet) withdrawAddress(cx context.Context, toAddr string, kind bool, i
 		return "", err
 	}
 	if amount < (fee + 1) {
+		log.Errorf("Amount %v is less than the fee %v", amount, fee+1)
 		return "", nil
 	}
 	log.Infof("amount %v, fee %v, amount - fee %v", amount, fee, amount-fee)

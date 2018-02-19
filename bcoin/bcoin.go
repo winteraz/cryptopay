@@ -131,7 +131,7 @@ type Transaction struct {
 }
 
 type Summary struct {
-	Index string `json:"index"`
+	Index int `json:"index"`
 }
 
 func (c *Client) HasTransactions(cx context.Context, addr ...string) (map[string]bool, error) {
@@ -182,7 +182,9 @@ func (c *Client) HasTransactions(cx context.Context, addr ...string) (map[string
 	}
 
 	if len(sa) != len(addr) {
-		return nil, fmt.Errorf("requested %v, received %v", len(addr), len(sa))
+		err = fmt.Errorf("requested %v, received %v", len(addr), len(sa))
+		//return nil,  err
+		log.Error(err)
 	}
 
 	return c.hasTransactionsFromTX(cx, addr...)
@@ -269,6 +271,7 @@ func (c *Client) Broadcast(cx context.Context, txa ...string) (map[string]error,
 			k = 0
 		}
 		go func(cx context.Context, tx string) {
+/*
 			go func(tx string) {
 				if err := c.broadcastBlockchain(cx, tx); err != nil {
 					log.Error(err)
@@ -284,6 +287,7 @@ func (c *Client) Broadcast(cx context.Context, txa ...string) (map[string]error,
 					log.Error(err)
 				}
 			}(tx)
+*/
 			r := Rsp{tx: tx}
 			r.err = c.BroadcastTX(cx, tx)
 			ch <- r

@@ -153,12 +153,12 @@ func (r *Request) balanceAccounts(cx context.Context, remoteHost string, account
 		}
 		if len(extAcct) != 0 {
 			bal.External[accountIndex] = extAcct
-			log.Errorf("extAcct %q", extAcct)
+			log.Infof("extAcct %q", extAcct)
 			account = 0
 		}
 		if len(interAcct) != 0 {
 			bal.Internal[accountIndex] = interAcct
-			log.Errorf("interAcct %q", interAcct)
+			log.Infof("interAcct %q", interAcct)
 			account = 0
 		}
 		for _, v := range extAcct {
