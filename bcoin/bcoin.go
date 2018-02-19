@@ -271,23 +271,23 @@ func (c *Client) Broadcast(cx context.Context, txa ...string) (map[string]error,
 			k = 0
 		}
 		go func(cx context.Context, tx string) {
-/*
-			go func(tx string) {
-				if err := c.broadcastBlockchain(cx, tx); err != nil {
-					log.Error(err)
-				}
-			}(tx)
-			go func(tx string) {
-				if err := c.broadcastInsight(cx, tx); err != nil {
-					log.Error(err)
-				}
-			}(tx)
-			go func(tx string) {
-				if err := c.broadcastBTC(cx, tx); err != nil {
-					log.Error(err)
-				}
-			}(tx)
-*/
+			/*
+				go func(tx string) {
+					if err := c.broadcastBlockchain(cx, tx); err != nil {
+						log.Error(err)
+					}
+				}(tx)
+				go func(tx string) {
+					if err := c.broadcastInsight(cx, tx); err != nil {
+						log.Error(err)
+					}
+				}(tx)
+				go func(tx string) {
+					if err := c.broadcastBTC(cx, tx); err != nil {
+						log.Error(err)
+					}
+				}(tx)
+			*/
 			r := Rsp{tx: tx}
 			r.err = c.BroadcastTX(cx, tx)
 			ch <- r

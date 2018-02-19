@@ -23,8 +23,8 @@ const GweiToWei = 1000000000
 func EstimateFee(c CoinType, tx []byte) (uint64, error) {
 	switch c {
 	case BTC:
-		const fee = 130   // 1000 // satoshi per byte
-		return uint64(fee * len(tx)), nil 
+		const fee = 130 // 1000 // satoshi per byte
+		return uint64(fee * len(tx)), nil
 	case ETH:
 		return GasLimit * (GasPrice * GweiToWei), nil // Fee should be returned in Wei ?
 	}
