@@ -138,7 +138,7 @@ func (w *wallet) balanceByIndexes(cx context.Context, kind bool, addressGap uint
 // Move the wallet to a different provider/address
 // toPub - extended public keys where the payments are being transfered.
 func (w *wallet) Move(cx context.Context, toPub string, addressGap uint32) ([]string, error) {
-	kind := false
+	kind := false // is private
 	onlyOnce := false
 	unspent, highestIndex, err := w.balanceByIndexes(cx, kind, addressGap, onlyOnce)
 	if err != nil {
@@ -193,7 +193,7 @@ func (w *wallet) withdrawAddress(cx context.Context, toAddr string, kind bool, i
 		log.Error(err)
 		return "", err
 	}
-	//log.Infof("pub is %v", pub)
+	log.Infof("pub is %v", pub)
 	priv, err := w.priv.DeriveExtendedKey(kind, index)
 	if err != nil {
 		log.Error(err)
@@ -202,6 +202,7 @@ func (w *wallet) withdrawAddress(cx context.Context, toAddr string, kind bool, i
 	// Set an abritrary
 	fee := uint64(1000)
 	if amount < (fee + 1) {
+		log.Infof("Amount %v smaller than the fee %v", amount, fee + 1)
 		return "", nil
 	}
 	b, err := makeTransaction(cx, w.unspender, priv, pub, toAddr, w.coin, amount-fee, fee)
