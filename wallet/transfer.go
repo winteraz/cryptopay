@@ -10,10 +10,6 @@ import (
 // discovers if there are transactions so that we can estimate the addressGap to follow.
 // map[address]index
 func (w *wallet) DiscoverUsedIndex(cx context.Context, kind bool, addressGap uint32, onlyOnce bool) ([]uint32, error) {
-	// we set kind to false(external) b/c the internal address maps to the external one and
-	//  external addreses can have internal (for change) but internal are more likely to be empty
-	// if no chance was sent
-	//kind = false // for some reasons this doesn't work...
 	mp := []uint32{}
 	var depth uint32
 	for {
@@ -145,9 +141,12 @@ func (w *wallet) Move(cx context.Context, toPub string, addressGap uint32) ([]st
 		log.Error(err)
 		return nil, err
 	}
-	if highestIndex == 0 && len(unspent) == 0 {
-		return nil, nil
-	}
+	/*
+		// This is wrong b/c first external index is zero and it may have zero unspent funds on it even if the internal may have some change.
+		if highestIndex == 0 && len(unspent) == 0 {
+			return nil, nil
+		}
+	*/
 	log.Infof("highest index is %v", highestIndex)
 	kind = true
 	onlyOnce = false
@@ -193,7 +192,7 @@ func (w *wallet) withdrawAddress(cx context.Context, toAddr string, kind bool, i
 		log.Error(err)
 		return "", err
 	}
-	log.Infof("pub is %v", pub)
+	log.Infof("pub is %s", pub)
 	priv, err := w.priv.DeriveExtendedKey(kind, index)
 	if err != nil {
 		log.Error(err)
@@ -202,7 +201,7 @@ func (w *wallet) withdrawAddress(cx context.Context, toAddr string, kind bool, i
 	// Set an abritrary
 	fee := uint64(1000)
 	if amount < (fee + 1) {
-		log.Infof("Amount %v smaller than the fee %v", amount, fee + 1)
+		log.Infof("Amount %v smaller than the fee %v", amount, fee+1)
 		return "", nil
 	}
 	b, err := makeTransaction(cx, w.unspender, priv, pub, toAddr, w.coin, amount-fee, fee)
