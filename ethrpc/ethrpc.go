@@ -93,8 +93,8 @@ func (c *Client) CountTransactionsByAddress(cx context.Context, address string) 
 		return 0, fmt.Errorf("Err %v, B %s", err, b)
 	}
 	lit := strings.TrimPrefix(v.Result, "0x")
-	r, err := strconv.ParseUint(lit, 16, 64)
-	if err != nil {
+	r, err :=  strconv.ParseUint(lit, 16, 64)
+	if err != nil{
 		log.Errorf("lit %v, err %v", lit, err)
 	}
 	return r, err
@@ -252,12 +252,15 @@ func (c *Client) Broadcast(cx context.Context, txa ...string) (map[string]error,
 			continue
 		}
 
-		lit := strings.TrimPrefix(v.Result, "0x")
-		_, err := strconv.ParseUint(lit, 16, 64)
-		m[txa[v.ID-1]] = err
-		if err != nil {
-			log.Errorf("lit %s, err %v", lit, err)
-		}
+		//lit := strings.TrimPrefix(v.Result, "0x")
+		// this is a transaction, it would surely fail
+		//  _, err := strconv.ParseUint(lit, 16, 64)
+		//if err != nil{
+		//	log.Errorf("lit %s, err %v", lit, err)
+		//}
+		log.Infof("Success %s", v.Result)
+		m[txa[v.ID-1]]  = nil
+
 	}
 	return m, nil
 }
