@@ -93,7 +93,11 @@ func (c *Client) CountTransactionsByAddress(cx context.Context, address string) 
 		return 0, fmt.Errorf("Err %v, B %s", err, b)
 	}
 	lit := strings.TrimPrefix(v.Result, "0x")
-	return strconv.ParseUint(lit, 16, 64)
+	r, err := strconv.ParseUint(lit, 16, 64)
+	if err != nil {
+		log.Errorf("lit %v, err %v", lit, err)
+	}
+	return r, err
 }
 
 func (c *Client) HasTransactions(cx context.Context, addr ...string) (map[string]bool, error) {
@@ -176,6 +180,7 @@ func (c *Client) Balance(addr ...string) (map[string]uint64, error) {
 		lit := strings.TrimPrefix(v.Result, "0x")
 		m[addr[v.ID-1]], err = strconv.ParseUint(lit, 16, 64)
 		if err != nil {
+			log.Errorf("lit %s, err %v", lit, err)
 			return nil, err
 		}
 	}
@@ -248,7 +253,11 @@ func (c *Client) Broadcast(cx context.Context, txa ...string) (map[string]error,
 		}
 
 		lit := strings.TrimPrefix(v.Result, "0x")
-		_, m[txa[v.ID-1]] = strconv.ParseUint(lit, 16, 64)
+		_, err := strconv.ParseUint(lit, 16, 64)
+		m[txa[v.ID-1]] = err
+		if err != nil {
+			log.Errorf("lit %s, err %v", lit, err)
+		}
 	}
 	return m, nil
 }
