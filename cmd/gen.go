@@ -45,6 +45,7 @@ func main() {
 	switch {
 	case *balance:
 		req := &util.Request{
+			Passwd:   *pass,
 			Mnemonic:       *mnemonicIn,
 			ExtendedPublic: *xpub,
 			Coin:           cryptopay.CoinType(*coin),
